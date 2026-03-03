@@ -1,12 +1,18 @@
 services:
   secure-vibe:
-    build: .
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     image: secure-vibe
     stdin_open: true
     tty: true
     container_name: secure-vibe
+    environment:
+      - CLAUDE_CREDENTIALS
     volumes:
-      - ~/.claude:/home/viber/.claude:ro
+      - ~/.claude:/home/viber/.claude-host
       - ./test-repo:/home/viber/app
       - ./linuxbrew:/home/linuxbrew/.linuxbrew
     

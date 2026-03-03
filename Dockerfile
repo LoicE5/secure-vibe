@@ -15,6 +15,11 @@ RUN apt-get update \
 RUN usermod -l viber -d /home/viber -m ubuntu \
     && groupmod -n viber ubuntu
 
+# Match the host user's UID/GID so mounted volume files are accessible
+ARG UID=1000
+ARG GID=1000
+RUN usermod -u $UID viber && groupmod -g $GID viber
+
 # Pre-create the Homebrew prefix directory and hand it to viber
 # (the install script targets /home/linuxbrew/.linuxbrew on Linux)
 RUN mkdir -p /home/linuxbrew && chown viber:viber /home/linuxbrew
@@ -34,10 +39,13 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}
 
 RUN brew update && \
     brew tap oven-sh/bun && \
-    brew install gcc
+    brew install gcc bun
 
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/home/viber/.local/bin:${PATH}"
 
-CMD ["claude", "--dangerously-skip-permissions"]
+COPY --chown=viber:viber entrypoint.sh /home/viber/entrypoint.sh
+RUN chmod +x /home/viber/entrypoint.sh
+
+ENTRYPOINT ["/home/viber/entrypoint.sh"]
