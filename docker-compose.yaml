@@ -14,5 +14,5 @@ services:
     volumes:
       - ~/.claude:/home/viber/.claude-host
       - ./test-repo:/home/viber/app
-      - ./linuxbrew:/home/linuxbrew/.linuxbrew
+      # - ./linuxbrew:/home/linuxbrew/.linuxbrew
     

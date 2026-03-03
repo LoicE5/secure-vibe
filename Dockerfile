@@ -45,7 +45,6 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/home/viber/.local/bin:${PATH}"
 
-COPY --chown=viber:viber entrypoint.sh /home/viber/entrypoint.sh
-RUN chmod +x /home/viber/entrypoint.sh
+COPY --chown=viber:viber entrypoint.ts /home/viber/entrypoint.ts
 
-ENTRYPOINT ["/home/viber/entrypoint.sh"]
+ENTRYPOINT ["bun", "/home/viber/entrypoint.ts"]
