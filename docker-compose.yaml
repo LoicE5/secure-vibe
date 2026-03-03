@@ -1,0 +1,12 @@
+services:
+  secure-vibe:
+    build: .
+    image: secure-vibe
+    stdin_open: true
+    tty: true
+    container_name: secure-vibe
+    volumes:
+      - ~/.claude:/home/viber/.claude:ro
+      - ./test-repo:/home/viber/app
+      - ./linuxbrew:/home/linuxbrew/.linuxbrew
+    
