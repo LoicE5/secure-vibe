@@ -227,7 +227,11 @@ async function runContainer(
     "-v", `${workDir}:/home/viber/app`,
     // Mount as read-only so the container never writes back to the host's ~/.claude.
     // The entrypoint copies it to a writable location inside the container.
-    "-v", `${CLAUDE_DIR}:/home/viber/.claude-host:ro`
+    "-v", `${CLAUDE_DIR}:/home/viber/.claude-host:ro`,
+    // Named volume for Homebrew — seeded from /opt/linuxbrew-seed on first run,
+    // then persists across container restarts.
+    // To reset after an image rebuild: docker volume rm secure-vibe-brew
+    "-v", "secure-vibe-brew:/home/linuxbrew"
   ]
 
   if (credentialsJson) {

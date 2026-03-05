@@ -1,5 +1,19 @@
 import { mkdir, writeFile, access, rm } from "fs/promises"
 
+// ── Seed linuxbrew volume on first run ────────────────────────────────────────
+// The named volume at /home/linuxbrew starts empty; copy from the seed baked
+// into the image. Subsequent runs skip this entirely.
+const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
+if (!brewReady) {
+  console.info("  [entrypoint] First run: seeding brew volume from image (this may take a minute)…")
+  const seed = Bun.spawn(["cp", "-a", "/opt/linuxbrew-seed/.", "/home/linuxbrew/"], {
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  await seed.exited
+  console.info("  [entrypoint] Brew volume ready.")
+}
+
 const CLAUDE_DIR = "/home/viber/.claude"
 const CLAUDE_HOST_DIR = "/home/viber/.claude-host"
 const HOME_DIR = "/home/viber"

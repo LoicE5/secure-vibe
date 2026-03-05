@@ -24,6 +24,10 @@ RUN usermod -u $UID viber && groupmod -o -g $GID viber
 # (the install script targets /home/linuxbrew/.linuxbrew on Linux)
 RUN mkdir -p /home/linuxbrew && chown viber:viber /home/linuxbrew
 
+# Seed directory: populated after brew installs so the runtime volume can be
+# initialized on first run without requiring root inside the container.
+RUN mkdir -p /opt/linuxbrew-seed && chown viber:viber /opt/linuxbrew-seed
+
 # Lock root: remove login shell and lock the password before dropping privileges
 RUN passwd -l root && usermod -s /usr/sbin/nologin root
 
@@ -40,6 +44,10 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}
 RUN brew update && \
     brew tap oven-sh/bun && \
     brew install gcc bun
+
+# Copy linuxbrew into the seed directory so the runtime volume can be populated
+# on first run even though /home/linuxbrew will be shadowed by a named volume.
+RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
 
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
