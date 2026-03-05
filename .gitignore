@@ -1,2 +1,3 @@
 .crendentials.json
+.env
 node_modules
