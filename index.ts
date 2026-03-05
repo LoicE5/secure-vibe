@@ -1,8 +1,7 @@
-import { access, constants, mkdtemp, cp, writeFile, rm } from "fs/promises"
+import { access, constants, readFile } from "fs/promises"
 import { createInterface } from "readline"
 import { homedir, userInfo } from "os"
 import { resolve, join } from "path"
-import { tmpdir } from "os"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,11 +29,11 @@ async function commandExists(command: string): Promise<boolean> {
 }
 
 async function testRuntime(runtime: string): Promise<boolean> {
-  const process = Bun.spawn([runtime, "info"], {
+  const proc = Bun.spawn([runtime, "info"], {
     stdout: "pipe",
     stderr: "pipe"
   })
-  return await process.exited === 0
+  return await proc.exited === 0
 }
 
 function isBannedDirectory(absolutePath: string): boolean {
@@ -119,58 +118,66 @@ async function selectRuntime(): Promise<Runtime> {
 // ── Step 3: Credential resolution ────────────────────────────────────────────
 
 const CLAUDE_DIR = join(homedir(), ".claude")
-const CREDENTIALS_FILE = join(CLAUDE_DIR, ".credentials.json")
+const CLAUDE_JSON_PATH = join(homedir(), ".claude.json")
 
-async function resolveCredentials(): Promise<{ claudeHostPath: string; tempDir: string | null }> {
-  const credentialsExist = await access(CREDENTIALS_FILE, constants.R_OK)
-    .then(() => true)
-    .catch(() => false)
+// Reads ~/.claude.json and extracts the auth fields Claude needs.
+// Claude 2.1.63+ stores credentials there (not in ~/.claude/.credentials.json).
+async function readClaudeJson(): Promise<string | null> {
+  const exists = await access(CLAUDE_JSON_PATH, constants.R_OK).then(() => true).catch(() => false)
+  if (!exists) return null
 
-  if (credentialsExist) {
-    return { claudeHostPath: CLAUDE_DIR, tempDir: null }
+  try {
+    const content = JSON.parse(await readFile(CLAUDE_JSON_PATH, "utf-8")) as Record<string, unknown>
+    if (!content.claudeAiOauth) return null
+    return JSON.stringify({
+      claudeAiOauth: content.claudeAiOauth,
+      organizationUuid: content.organizationUuid
+    })
+  } catch (readError: unknown) {
+    console.warn("  Could not parse ~/.claude.json:", readError)
+    return null
+  }
+}
+
+// Returns the credentials JSON string to inject into the container via env var,
+// or null if credentials are already present in the mounted .claude-host dir.
+async function resolveCredentials(): Promise<string | null> {
+  // Primary: read from ~/.claude.json (Claude 2.1.63+, works on all platforms)
+  const fromFile = await readClaudeJson()
+  if (fromFile) {
+    console.info("  Credentials read from ~/.claude.json.")
+    return fromFile
   }
 
-  if (process.platform !== "darwin") {
-    console.error(
-      `✗ No credentials found at ${CREDENTIALS_FILE}.\n` +
-      "  On Linux, ~/.claude/.credentials.json is required. Please authenticate with Claude Code first."
-    )
-    process.exit(1)
+  // macOS fallback: pull from keychain (older Claude or fresh install)
+  if (process.platform === "darwin") {
+    console.info("  ~/.claude.json not found. Trying macOS keychain…")
+    try {
+      const serviceName = "Claude Code-credentials"
+      const credentialsJson = (await Bun.$`security find-generic-password -s ${serviceName} -w`.text()).trim()
+      if (!credentialsJson) {
+        console.error("✗ Keychain entry for 'Claude Code-credentials' was empty.")
+        process.exit(1)
+      }
+      console.info("  Credentials extracted from keychain.")
+      return credentialsJson
+    } catch (keychainError: unknown) {
+      console.error("✗ Failed to read credentials from keychain:", keychainError)
+      process.exit(1)
+    }
   }
 
-  // macOS: extract from keychain
-  console.info("  ~/.claude/.credentials.json not found. Attempting to read from macOS keychain…")
-
-  const keychainProcess = Bun.spawn(
-    ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
-    { stdout: "pipe", stderr: "pipe" }
-  )
-
-  const exitCode = await keychainProcess.exited
-  if (exitCode !== 0) {
-    const stderrText = await new Response(keychainProcess.stderr).text()
-    console.error(`✗ Failed to read credentials from keychain (exit ${exitCode}):\n  ${stderrText.trim()}`)
-    process.exit(1)
+  // Linux: check old .credentials.json location as last resort
+  const legacyFile = join(CLAUDE_DIR, ".credentials.json")
+  const legacyExists = await access(legacyFile, constants.R_OK).then(() => true).catch(() => false)
+  if (legacyExists) {
+    const content = await readFile(legacyFile, "utf-8")
+    console.info("  Credentials read from ~/.claude/.credentials.json.")
+    return content
   }
 
-  const credentialsJson = (await new Response(keychainProcess.stdout).text()).trim()
-  if (!credentialsJson) {
-    console.error("✗ Keychain entry for 'Claude Code-credentials' was empty.")
-    process.exit(1)
-  }
-
-  // Create temp dir, copy ~/.claude into it, inject credentials
-  const tempDir = await mkdtemp(join(tmpdir(), "secure-vibe-"))
-
-  const claudeDirExists = await access(CLAUDE_DIR, constants.R_OK).then(() => true).catch(() => false)
-  if (claudeDirExists) {
-    await cp(CLAUDE_DIR, tempDir, { recursive: true })
-  }
-
-  await writeFile(join(tempDir, ".credentials.json"), credentialsJson, { mode: 0o600 })
-  console.info("  Credentials injected into temporary directory (will be deleted after container exits).")
-
-  return { claudeHostPath: tempDir, tempDir }
+  console.error("✗ No credentials found. Please authenticate with Claude Code on this machine first.")
+  process.exit(1)
 }
 
 // ── Step 4: Image check + build ───────────────────────────────────────────────
@@ -179,12 +186,7 @@ const IMAGE_NAME = "secure-vibe"
 const SCRIPT_DIR = import.meta.dir
 
 async function ensureImage(runtime: Runtime): Promise<void> {
-  const checkProcess = Bun.spawn([runtime, "images", IMAGE_NAME, "-q"], {
-    stdout: "pipe",
-    stderr: "pipe"
-  })
-  await checkProcess.exited
-  const imageId = (await new Response(checkProcess.stdout).text()).trim()
+  const imageId = (await Bun.$`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
 
   if (imageId !== "") {
     console.info(`  Image "${IMAGE_NAME}" found.`)
@@ -220,43 +222,29 @@ async function ensureImage(runtime: Runtime): Promise<void> {
 async function runContainer(
   runtime: Runtime,
   workDir: string,
-  claudeHostPath: string
+  credentialsJson: string | null
 ): Promise<number> {
-  const containerProcess = Bun.spawn(
-    [
-      runtime, "run", "--rm", "-it",
-      "-v", `${workDir}:/home/viber/app`,
-      "-v", `${claudeHostPath}:/home/viber/.claude-host:ro`,
-      IMAGE_NAME
-    ],
-    { stdin: "inherit", stdout: "inherit", stderr: "inherit" }
-  )
+  const args = [
+    runtime, "run", "--rm", "-it",
+    "-v", `${workDir}:/home/viber/app`,
+    // Mount as read-only so the container never writes back to the host's ~/.claude.
+    // The entrypoint copies it to a writable location inside the container.
+    "-v", `${CLAUDE_DIR}:/home/viber/.claude-host:ro`
+  ]
 
+  if (credentialsJson) {
+    // Pass credentials as an env var; entrypoint writes them to .credentials.json
+    // inside the container. Nothing is ever written to the host's ~/.claude.
+    args.push("-e", `CLAUDE_CREDENTIALS=${credentialsJson}`)
+  }
+
+  args.push(IMAGE_NAME)
+
+  const containerProcess = Bun.spawn(args, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
   return await containerProcess.exited ?? 0
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-
-let tempDir: string | null = null
-
-async function cleanup(): Promise<void> {
-  if (tempDir) {
-    await rm(tempDir, { recursive: true, force: true }).catch(cleanupError => {
-      console.error(`  Warning: failed to delete temp directory ${tempDir}:`, cleanupError)
-    })
-    tempDir = null
-  }
-}
-
-process.on("SIGINT", async () => {
-  await cleanup()
-  process.exit(130)
-})
-
-process.on("SIGTERM", async () => {
-  await cleanup()
-  process.exit(143)
-})
 
 console.info("── secure-vibe ──────────────────────────────────────────")
 
@@ -264,14 +252,8 @@ const workDir = await selectDirectory()
 console.info(`  Mounting: ${workDir}`)
 
 const runtime = await selectRuntime()
+const credentialsJson = await resolveCredentials()
 
-const credentials = await resolveCredentials()
-tempDir = credentials.tempDir
-
-try {
-  await ensureImage(runtime)
-  const exitCode = await runContainer(runtime, workDir, credentials.claudeHostPath)
-  process.exit(exitCode)
-} finally {
-  await cleanup()
-}
+await ensureImage(runtime)
+const exitCode = await runContainer(runtime, workDir, credentialsJson)
+process.exit(exitCode)

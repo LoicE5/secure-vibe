@@ -1,34 +1,55 @@
-import { mkdir, cp, access, writeFile, chmod } from "fs/promises"
+import { mkdir, writeFile, access, rm } from "fs/promises"
 
 const CLAUDE_DIR = "/home/viber/.claude"
 const CLAUDE_HOST_DIR = "/home/viber/.claude-host"
-const START_SCRIPT = "/home/viber/start-claude.sh"
+const HOME_DIR = "/home/viber"
 
-// Copy host .claude config into the container's own writable filesystem.
-// /home/viber/.claude is NOT bind-mounted, so nothing here touches the host.
 await mkdir(CLAUDE_DIR, { recursive: true })
 
+// Copy contents of .claude-host into .claude.
+// Uses bash with dotglob so hidden files are included alongside regular ones.
 const hostDirExists = await access(CLAUDE_HOST_DIR).then(() => true).catch(() => false)
 if (hostDirExists) {
-  await cp(CLAUDE_HOST_DIR, CLAUDE_DIR, { recursive: true })
+  const cpProc = Bun.spawn(
+    ["bash", "-c", `shopt -s dotglob nullglob; cp -rp "${CLAUDE_HOST_DIR}/"* "${CLAUDE_DIR}/" 2>/dev/null; true`],
+    { stdout: "pipe", stderr: "pipe" }
+  )
+  await cpProc.exited
 }
 
-// Write the shell init file that auto-starts claude then drops to bash.
-await writeFile(
-  START_SCRIPT,
-  [
-    "#!/bin/bash",
-    "source ~/.bashrc 2>/dev/null || true",
-    "claude --dangerously-skip-permissions",
-    'echo ""',
-    'echo "Claude exited. Type \'claude\' to restart."'
-  ].join("\n") + "\n"
-)
-await chmod(START_SCRIPT, 0o755)
+// Inject credentials from the env var set by index.ts.
+// CLAUDE_CREDENTIALS contains a merged JSON with claudeAiOauth + onboarding metadata.
+// Write the full object to ~/.claude.json (Claude 2.1.63+ primary location) and
+// write just the auth fields to ~/.claude/.credentials.json (older Claude fallback).
+const credentials = process.env.CLAUDE_CREDENTIALS
+if (credentials) {
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(credentials) as Record<string, unknown>
+  } catch {
+    parsed = {}
+  }
 
-// Replace this process with bash, using start-claude.sh as the init file.
-// The user lands in claude immediately; ctrl+c / /exit drops them to bash.
-const proc = Bun.spawn(["bash", "--init-file", START_SCRIPT], {
+  // ~/.claude.json — full merged config (auth + onboarding state)
+  await writeFile(`${HOME_DIR}/.claude.json`, credentials, { mode: 0o600 })
+
+  // ~/.claude/.credentials.json — auth fields only (legacy fallback)
+  const authOnly = JSON.stringify({
+    claudeAiOauth: parsed.claudeAiOauth,
+    organizationUuid: parsed.organizationUuid,
+  })
+  await rm(`${CLAUDE_DIR}/.credentials.json`, { recursive: true, force: true })
+  await writeFile(`${CLAUDE_DIR}/.credentials.json`, authOnly, { mode: 0o600 })
+} else {
+  console.warn("  [entrypoint] CLAUDE_CREDENTIALS not set — Claude will prompt for authentication.")
+}
+
+// Ignore SIGINT at the bun (PID 1) level so ctrl+c inside the container
+// only reaches bash's job control, which kills the foreground job (claude)
+// without terminating the shell itself.
+process.on("SIGINT", () => {})
+
+const proc = Bun.spawn(["bash", "-i"], {
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit"

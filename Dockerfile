@@ -18,7 +18,7 @@ RUN usermod -l viber -d /home/viber -m ubuntu \
 # Match the host user's UID/GID so mounted volume files are accessible
 ARG UID=1000
 ARG GID=1000
-RUN usermod -u $UID viber && groupmod -g $GID viber
+RUN usermod -u $UID viber && groupmod -o -g $GID viber
 
 # Pre-create the Homebrew prefix directory and hand it to viber
 # (the install script targets /home/linuxbrew/.linuxbrew on Linux)
@@ -44,6 +44,18 @@ RUN brew update && \
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/home/viber/.local/bin:${PATH}"
+
+# Auto-start claude when the user enters the container shell.
+# SHLVL guard ensures it only fires on the outermost bash, not on sub-shells.
+RUN cat >> /home/viber/.bashrc <<'EOF'
+
+# secure-vibe: auto-start claude on first shell
+if [[ $SHLVL -eq 1 ]]; then
+  claude --dangerously-skip-permissions || true
+  echo ""
+  echo "Claude exited. Type 'claude' to restart."
+fi
+EOF
 
 COPY --chown=viber:viber entrypoint.ts /home/viber/entrypoint.ts
 
