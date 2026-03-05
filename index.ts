@@ -127,12 +127,10 @@ async function readClaudeJson(): Promise<string | null> {
   if (!exists) return null
 
   try {
-    const content = JSON.parse(await readFile(CLAUDE_JSON_PATH, "utf-8")) as Record<string, unknown>
+    const raw = await readFile(CLAUDE_JSON_PATH, "utf-8")
+    const content = JSON.parse(raw) as Record<string, unknown>
     if (!content.claudeAiOauth) return null
-    return JSON.stringify({
-      claudeAiOauth: content.claudeAiOauth,
-      organizationUuid: content.organizationUuid
-    })
+    return raw
   } catch (readError: unknown) {
     console.warn("  Could not parse ~/.claude.json:", readError)
     return null

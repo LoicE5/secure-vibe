@@ -31,7 +31,10 @@ if (credentials) {
   }
 
   // ~/.claude.json — full merged config (auth + onboarding state)
-  await writeFile(`${HOME_DIR}/.claude.json`, credentials, { mode: 0o600 })
+  // Ensure onboarding flags are set so Claude skips first-run setup prompts.
+  // Keychain-sourced credentials only carry auth tokens, not UI state.
+  if (!parsed.hasCompletedOnboarding) parsed.hasCompletedOnboarding = true
+  await writeFile(`${HOME_DIR}/.claude.json`, JSON.stringify(parsed), { mode: 0o600 })
 
   // ~/.claude/.credentials.json — auth fields only (legacy fallback)
   const authOnly = JSON.stringify({
