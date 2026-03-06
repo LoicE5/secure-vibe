@@ -65,6 +65,6 @@ if [[ $SHLVL -eq 1 ]]; then
 fi
 EOF
 
-COPY --chown=viber:viber entrypoint.ts /home/viber/entrypoint.ts
+COPY --chown=viber:viber src/entrypoint.ts /home/viber/entrypoint.ts
 
 ENTRYPOINT ["bun", "/home/viber/entrypoint.ts"]

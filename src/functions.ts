@@ -1,12 +1,14 @@
 import { access, constants, readFile } from "fs/promises"
 import { createInterface } from "readline"
-import { homedir, userInfo } from "os"
+import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
+import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, IMAGE_NAME, SCRIPT_DIR, VALID_SAVE_MODES } from "./constants"
+import type { Runtime, SaveMode } from "./interfaces"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
-function parseArg(flag: string): string | null {
+export function parseArg(flag: string): string | null {
   const args = process.argv.slice(2)
   for (let i = 0; i < args.length; i++) {
     const current = args.at(i)!
@@ -16,11 +18,9 @@ function parseArg(flag: string): string | null {
   return null
 }
 
-const saveArg = parseArg("--save")
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function prompt(question: string): Promise<string> {
+export function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   return new Promise(resolve => {
     rl.question(question, answer => {
@@ -30,7 +30,7 @@ function prompt(question: string): Promise<string> {
   })
 }
 
-async function isDirectory(path: string): Promise<boolean> {
+export async function isDirectory(path: string): Promise<boolean> {
   try {
     const stat = await Bun.file(path).stat()
     return stat.isDirectory()
@@ -39,11 +39,11 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
-async function commandExists(command: string): Promise<boolean> {
+export async function commandExists(command: string): Promise<boolean> {
   return Bun.which(command) !== null
 }
 
-async function testRuntime(runtime: string): Promise<boolean> {
+export async function testRuntime(runtime: string): Promise<boolean> {
   const proc = Bun.spawn([runtime, "info"], {
     stdout: "pipe",
     stderr: "pipe"
@@ -51,34 +51,17 @@ async function testRuntime(runtime: string): Promise<boolean> {
   return await proc.exited === 0
 }
 
-function isBannedDirectory(absolutePath: string): boolean {
-  const home = homedir()
-  const banned = [
-    home,
-    "/",
-    "/etc",
-    "/usr",
-    "/bin",
-    "/sbin",
-    "/lib",
-    "/lib64",
-    "/var",
-    "/tmp",
-    "/proc",
-    "/sys",
-    "/dev",
-    "/boot"
-  ]
-  return banned.some(bannedPath => absolutePath === bannedPath)
+export function isBannedDirectory(absolutePath: string): boolean {
+  return BANNED_DIRS.some(bannedPath => absolutePath === bannedPath)
 }
 
-function timestamp() {
-    return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)
+export function timestamp() {
+  return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)
 }
 
 // ── Step 1: Directory selection ───────────────────────────────────────────────
 
-async function selectDirectory(): Promise<string> {
+export async function selectDirectory(): Promise<string> {
   while (true) {
     const input = await prompt("Directory to mount (leave blank for current directory): ")
     const targetPath = input === "" ? process.cwd() : resolve(input)
@@ -99,9 +82,7 @@ async function selectDirectory(): Promise<string> {
 
 // ── Step 2: Runtime detection ─────────────────────────────────────────────────
 
-type Runtime = "docker" | "podman"
-
-async function selectRuntime(): Promise<Runtime> {
+export async function selectRuntime(): Promise<Runtime> {
   const dockerAvailable = (await commandExists("docker")) && (await testRuntime("docker"))
   const podmanAvailable = (await commandExists("podman")) && (await testRuntime("podman"))
 
@@ -136,12 +117,9 @@ async function selectRuntime(): Promise<Runtime> {
 
 // ── Step 3: Credential resolution ────────────────────────────────────────────
 
-const CLAUDE_DIR = join(homedir(), ".claude")
-const CLAUDE_JSON_PATH = join(homedir(), ".claude.json")
-
 // Reads ~/.claude.json and extracts the auth fields Claude needs.
 // Claude 2.1.63+ stores credentials there (not in ~/.claude/.credentials.json).
-async function readClaudeJson(): Promise<string | null> {
+export async function readClaudeJson(): Promise<string | null> {
   const exists = await access(CLAUDE_JSON_PATH, constants.R_OK).then(() => true).catch(() => false)
   if (!exists) return null
 
@@ -158,7 +136,7 @@ async function readClaudeJson(): Promise<string | null> {
 
 // Returns the credentials JSON string to inject into the container via env var,
 // or null if credentials are already present in the mounted .claude-host dir.
-async function resolveCredentials(): Promise<string | null> {
+export async function resolveCredentials(): Promise<string | null> {
   // Primary: read from ~/.claude.json (Claude 2.1.63+, works on all platforms)
   const fromFile = await readClaudeJson()
   if (fromFile) {
@@ -199,10 +177,7 @@ async function resolveCredentials(): Promise<string | null> {
 
 // ── Step 4: Image check + build ───────────────────────────────────────────────
 
-const IMAGE_NAME = "secure-vibe"
-const SCRIPT_DIR = import.meta.dir
-
-async function ensureImage(runtime: Runtime): Promise<void> {
+export async function ensureImage(runtime: Runtime): Promise<void> {
   const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
 
   if (imageId !== "") {
@@ -211,7 +186,7 @@ async function ensureImage(runtime: Runtime): Promise<void> {
   }
 
   console.info(`  Image "${IMAGE_NAME}" not found. Building…`)
-  
+
   const { uid, gid } = userInfo()
 
   const buildProcess = Bun.spawn(
@@ -236,7 +211,7 @@ async function ensureImage(runtime: Runtime): Promise<void> {
 
 // ── Step 5: Run container ─────────────────────────────────────────────────────
 
-async function runContainer(
+export async function runContainer(
   runtime: Runtime,
   workDir: string,
   credentialsJson: string | null
@@ -267,10 +242,7 @@ async function runContainer(
 
 // ── Step 6: Save options ──────────────────────────────────────────────────────
 
-type SaveMode = "zip" | "copy" | "no"
-const VALID_SAVE_MODES: SaveMode[] = ["zip", "copy", "no"]
-
-async function selectSaveOption(workDir: string): Promise<SaveMode> {
+export async function selectSaveOption(workDir: string, saveArg: string | null): Promise<SaveMode> {
   if (saveArg !== null) {
     const normalized = saveArg.toLowerCase() as SaveMode
     if (VALID_SAVE_MODES.includes(normalized)) {
@@ -294,7 +266,7 @@ async function selectSaveOption(workDir: string): Promise<SaveMode> {
   }
 }
 
-async function runScrolling(args: string[], opts: { cwd?: string; windowSize?: number } = {}): Promise<number> {
+export async function runScrolling(args: string[], opts: { cwd?: string; windowSize?: number } = {}): Promise<number> {
   const { cwd, windowSize = 5 } = opts
 
   if (!process.stdout.isTTY) {
@@ -333,7 +305,7 @@ async function runScrolling(args: string[], opts: { cwd?: string; windowSize?: n
   return proc.exited
 }
 
-async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<void> {
+export async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<void> {
   const parent = dirname(workDir)
   const name = basename(workDir)
   const dest = mode === "zip"
@@ -356,23 +328,3 @@ async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<voi
     console.error("  ✗ Save failed:", err)
   }
 }
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-
-console.info("── secure-vibe ──────────────────────────────────────────")
-
-const workDir = await selectDirectory()
-console.info(`  Mounting: ${workDir}`)
-
-const saveMode = await selectSaveOption(workDir)
-
-const runtime = await selectRuntime()
-const credentialsJson = await resolveCredentials()
-
-if (saveMode !== "no") await saveDirectory(workDir, saveMode)
-
-await ensureImage(runtime)
-console.info(`Starting container shell. Default entrypoint : Claude - bypass permissions`)
-const exitCode = await runContainer(runtime, workDir, credentialsJson)
-
-process.exit(exitCode)
