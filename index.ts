@@ -73,7 +73,7 @@ function isBannedDirectory(absolutePath: string): boolean {
 }
 
 function timestamp() {
-    return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15)
+    return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)
 }
 
 // ── Step 1: Directory selection ───────────────────────────────────────────────
@@ -338,7 +338,7 @@ async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<voi
   const name = basename(workDir)
   const dest = mode === "zip"
     ? join(parent, `${name}-${timestamp()}.zip`)
-    : join(parent, `${name}-${timestamp()}-copy`)
+    : join(parent, `${name}-${timestamp()}`)
 
   try {
     if (mode === "zip") {
