@@ -211,7 +211,7 @@ async function ensureImage(runtime: Runtime): Promise<void> {
   }
 
   console.info(`  Image "${IMAGE_NAME}" not found. Building…`)
-
+  
   const { uid, gid } = userInfo()
 
   const buildProcess = Bun.spawn(
@@ -294,6 +294,45 @@ async function selectSaveOption(workDir: string): Promise<SaveMode> {
   }
 }
 
+async function runScrolling(args: string[], opts: { cwd?: string; windowSize?: number } = {}): Promise<number> {
+  const { cwd, windowSize = 5 } = opts
+
+  if (!process.stdout.isTTY) {
+    const proc = Bun.spawn(args, { cwd, stdout: "inherit", stderr: "inherit" })
+    return proc.exited
+  }
+
+  const proc = Bun.spawn(args, { cwd, stdout: "pipe", stderr: "pipe" })
+  const buffer: string[] = []
+  let linesWritten = 0
+  const cols = process.stdout.columns ?? 80
+
+  const emit = (line: string) => {
+    const trimmed = line.trimEnd().slice(0, cols - 2)
+    if (!trimmed) return
+    buffer.push(trimmed)
+    if (buffer.length > windowSize) buffer.shift()
+    if (linesWritten > 0) process.stdout.write(`\x1b[${linesWritten}A`)
+    process.stdout.write(buffer.map(l => `\x1b[2K  ${l}`).join("\n") + "\n")
+    linesWritten = buffer.length
+  }
+
+  const consume = async (stream: ReadableStream<Uint8Array>) => {
+    const decoder = new TextDecoder()
+    let partial = ""
+    for await (const chunk of stream) {
+      const text = partial + decoder.decode(chunk, { stream: true })
+      const parts = text.split(/[\n\r]/)
+      partial = parts.pop() ?? ""
+      for (const part of parts) emit(part)
+    }
+    if (partial) emit(partial)
+  }
+
+  await Promise.all([consume(proc.stdout), consume(proc.stderr)])
+  return proc.exited
+}
+
 async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<void> {
   const parent = dirname(workDir)
   const name = basename(workDir)
@@ -304,16 +343,12 @@ async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<voi
   try {
     if (mode === "zip") {
       console.info(`  Zipping "${name}" to ${dest} ...`)
-      const proc = Bun.spawn(["zip", "-r", dest, "."], {
-        cwd: workDir,
-        stdout: "inherit",
-        stderr: "inherit"
-      })
-      const code = await proc.exited
+      const code = await runScrolling(["zip", "-r", dest, "."], { cwd: workDir })
       if (code !== 0) { console.error(`  ✗ zip failed (exit ${code}).`); return }
     } else {
       console.info(`  Copying "${name}" to ${dest} ...`)
-      await $`rsync -avh --progress ${workDir} ${dest}`
+      const code = await runScrolling(["rsync", "-avh", "--progress", workDir, dest])
+      if (code !== 0) { console.error(`  ✗ rsync failed (exit ${code}).`); return }
     }
 
     console.info(`  Saved to: ${dest}`)
@@ -337,6 +372,7 @@ const credentialsJson = await resolveCredentials()
 if (saveMode !== "no") await saveDirectory(workDir, saveMode)
 
 await ensureImage(runtime)
+console.info(`Starting container shell. Default entrypoint : Claude - bypass permissions`)
 const exitCode = await runContainer(runtime, workDir, credentialsJson)
 
 process.exit(exitCode)
