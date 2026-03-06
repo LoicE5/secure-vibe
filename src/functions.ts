@@ -3,7 +3,7 @@ import { createInterface } from "readline"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
-import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, IMAGE_NAME, SCRIPT_DIR, VALID_SAVE_MODES } from "./constants"
+import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, DOCKERFILE_PATH, IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
 import type { Runtime, SaveMode } from "./interfaces"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export async function testRuntime(runtime: string): Promise<boolean> {
 }
 
 export function isBannedDirectory(absolutePath: string): boolean {
-  return BANNED_DIRS.some(bannedPath => absolutePath === bannedPath)
+  return BANNED_DIRS.has(absolutePath)
 }
 
 export function timestamp() {
@@ -192,10 +192,11 @@ export async function ensureImage(runtime: Runtime): Promise<void> {
   const buildProcess = Bun.spawn(
     [
       runtime, "build",
+      "-f", DOCKERFILE_PATH,
       "--build-arg", `UID=${uid}`,
       "--build-arg", `GID=${gid}`,
       "-t", IMAGE_NAME,
-      SCRIPT_DIR
+      PROJECT_DIR
     ],
     { stdin: "inherit", stdout: "inherit", stderr: "inherit" }
   )
@@ -279,7 +280,7 @@ export async function runScrolling(args: string[], opts: { cwd?: string; windowS
   let linesWritten = 0
   const cols = process.stdout.columns ?? 80
 
-  const emit = (line: string) => {
+  function emit(line: string) {
     const trimmed = line.trimEnd().slice(0, cols - 2)
     if (!trimmed) return
     buffer.push(trimmed)
@@ -289,7 +290,7 @@ export async function runScrolling(args: string[], opts: { cwd?: string; windowS
     linesWritten = buffer.length
   }
 
-  const consume = async (stream: ReadableStream<Uint8Array>) => {
+  async function consume(stream: ReadableStream<Uint8Array>) {
     const decoder = new TextDecoder()
     let partial = ""
     for await (const chunk of stream) {
