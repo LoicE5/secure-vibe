@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "start": "bun index.ts",
+    "vibe": "bun run start",
+    "prune:brew": "docker volume rm secure-vibe-brew"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   }
