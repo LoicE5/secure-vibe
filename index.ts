@@ -328,9 +328,9 @@ const saveMode = await selectSaveOption(workDir)
 const runtime = await selectRuntime()
 const credentialsJson = await resolveCredentials()
 
+if (saveMode !== "no") await saveDirectory(workDir, saveMode)
+
 await ensureImage(runtime)
 const exitCode = await runContainer(runtime, workDir, credentialsJson)
-
-if (saveMode !== "no") await saveDirectory(workDir, saveMode)
 
 process.exit(exitCode)
