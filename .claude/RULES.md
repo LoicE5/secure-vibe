@@ -14,3 +14,5 @@
 - console.log should only be temporarily used for debugging while developing. For persistent logging that needs to be committed, usage of console.info, console.error, console.warn, console.debug and others is mandatory.
 - In html (or equivalent), prefer usage of semantic tags such as main, aside, section, etc rather than plain divs and spans. The latters aren't forbidden, but should be questioned against a semantic alternative for a given context.
 - No trailing commas in JSON & JS objects, and others
+- In arrays, prefer the .at() syntax rather than brackets []
+    - arrray.at(5) is better than array[5].
