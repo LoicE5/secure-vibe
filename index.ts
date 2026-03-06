@@ -2,6 +2,7 @@ import { access, constants, readFile } from "fs/promises"
 import { createInterface } from "readline"
 import { homedir, userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
+import { $ } from "bun"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,10 @@ function isBannedDirectory(absolutePath: string): boolean {
     "/boot"
   ]
   return banned.some(bannedPath => absolutePath === bannedPath)
+}
+
+function timestamp() {
+    return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15)
 }
 
 // ── Step 1: Directory selection ───────────────────────────────────────────────
@@ -166,7 +171,7 @@ async function resolveCredentials(): Promise<string | null> {
     console.info("  ~/.claude.json not found. Trying macOS keychain…")
     try {
       const serviceName = "Claude Code-credentials"
-      const credentialsJson = (await Bun.$`security find-generic-password -s ${serviceName} -w`.text()).trim()
+      const credentialsJson = (await $`security find-generic-password -s ${serviceName} -w`.text()).trim()
       if (!credentialsJson) {
         console.error("✗ Keychain entry for 'Claude Code-credentials' was empty.")
         process.exit(1)
@@ -198,7 +203,7 @@ const IMAGE_NAME = "secure-vibe"
 const SCRIPT_DIR = import.meta.dir
 
 async function ensureImage(runtime: Runtime): Promise<void> {
-  const imageId = (await Bun.$`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+  const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
 
   if (imageId !== "") {
     console.info(`  Image "${IMAGE_NAME}" found.`)
@@ -292,13 +297,13 @@ async function selectSaveOption(workDir: string): Promise<SaveMode> {
 async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<void> {
   const parent = dirname(workDir)
   const name = basename(workDir)
-  const dest = mode === "zip" ? join(parent, `${name}.zip`) : join(parent, `${name}-copy`)
+  const dest = mode === "zip"
+    ? join(parent, `${name}-${timestamp()}.zip`)
+    : join(parent, `${name}-${timestamp()}-copy`)
 
   try {
-    const destExists = await Bun.file(dest).exists()
-    if (destExists) console.warn(`  Warning: "${dest}" already exists and will be overwritten.`)
-
     if (mode === "zip") {
+      console.info(`  Zipping "${name}" to ${dest} ...`)
       const proc = Bun.spawn(["zip", "-r", dest, "."], {
         cwd: workDir,
         stdout: "inherit",
@@ -307,7 +312,8 @@ async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<voi
       const code = await proc.exited
       if (code !== 0) { console.error(`  ✗ zip failed (exit ${code}).`); return }
     } else {
-      await Bun.$`cp -r ${workDir} ${dest}`
+      console.info(`  Copying "${name}" to ${dest} ...`)
+      await $`rsync -avh --progress ${workDir} ${dest}`
     }
 
     console.info(`  Saved to: ${dest}`)
