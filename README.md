@@ -55,7 +55,7 @@ All variables accept `"prompt"` as a value to force an interactive prompt even w
 Copy `.env.example` to `.env` and set your defaults:
 
 ```sh
-cp .env.example .env
+bun run env:init
 ```
 
 ## Config resolution
@@ -77,6 +77,10 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 | Script | Description |
 |---|---|
 | `bun vibe` / `bun start` | Start the container |
+| `bun run env:init` | Copy `.env.example` to `.env` (no-op if `.env` already exists) |
+| `bun run build` | Compile a standalone binary for the current platform into `dist/secure-vibe` |
+| `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
+| `bun run build:x64` | Compile for macOS x64 (Intel) |
 | `bun run prune:brew` | Delete the persistent Homebrew volume |
 | `bun run prune:image` | Remove the built Docker image |
 
