@@ -3,7 +3,7 @@ import { createInterface } from "readline"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
-import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, DOCKERFILE_PATH, IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
+import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, DOCKERFILE_PATH, IMAGE_CHECK_PATH, IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
 import type { Runtime, SaveMode } from "./interfaces"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
@@ -260,18 +260,7 @@ export async function resolveCredentials(): Promise<string | null> {
 
 // ── Step 4: Image check + build ───────────────────────────────────────────────
 
-export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false): Promise<void> {
-  if(!build && !buildNoCache) {
-    const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
-    if(imageId !== "") {
-      console.info(`  Image "${IMAGE_NAME}" found.`)
-      return
-    }
-    console.info(`  Image "${IMAGE_NAME}" not found. Building…`)
-  } else {
-    console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${IMAGE_NAME}"…`)
-  }
-
+async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
   const { uid, gid } = userInfo()
 
   const buildArgs = [
@@ -281,7 +270,7 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
     "--build-arg", `GID=${gid}`,
     "-t", IMAGE_NAME,
   ]
-  if(buildNoCache) buildArgs.push("--no-cache")
+  if(noCache) buildArgs.push("--no-cache")
   buildArgs.push(PROJECT_DIR)
 
   const buildProcess = Bun.spawn(buildArgs, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
@@ -293,6 +282,71 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
   }
 
   console.info(`  Image "${IMAGE_NAME}" built successfully.`)
+}
+
+async function pullImage(runtime: Runtime): Promise<boolean> {
+  const pullProcess = Bun.spawn([runtime, "pull", IMAGE_NAME], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+  const pullExit = await pullProcess.exited
+  return pullExit === 0
+}
+
+async function checkForUpdates(runtime: Runtime): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10)
+  const cacheFile = Bun.file(IMAGE_CHECK_PATH)
+
+  if(await cacheFile.exists()) {
+    const lastCheck = (await cacheFile.text()).trim()
+    if(lastCheck === today) {
+      console.info(`  Image is up to date (already checked today).`)
+      return
+    }
+  }
+
+  console.info(`  Checking for image updates…`)
+  const idBefore = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+  const pulled = await pullImage(runtime)
+
+  if(!pulled) {
+    console.warn(`  Could not reach Docker Hub to check for updates.`)
+    return
+  }
+
+  const idAfter = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+  if(idBefore !== idAfter) {
+    console.info(`  Image updated.`)
+  } else {
+    console.info(`  Image is already up to date.`)
+  }
+
+  await mkdir(dirname(IMAGE_CHECK_PATH), { recursive: true })
+  await Bun.write(IMAGE_CHECK_PATH, today)
+}
+
+export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false): Promise<void> {
+  if(build || buildNoCache) {
+    console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${IMAGE_NAME}"…`)
+    await buildImage(runtime, buildNoCache)
+    return
+  }
+
+  const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+
+  if(imageId !== "") {
+    await checkForUpdates(runtime)
+    return
+  }
+
+  console.info(`  Image not found locally. Pulling "${IMAGE_NAME}"…`)
+  const pulled = await pullImage(runtime)
+  if(pulled) return
+
+  console.info(`  Pull failed. Building from Dockerfile…`)
+  if(!(await Bun.file(DOCKERFILE_PATH).exists())) {
+    console.error(`✗ No Dockerfile found at ${DOCKERFILE_PATH} and pull failed. Cannot start.`)
+    process.exit(1)
+  }
+
+  await buildImage(runtime, false)
 }
 
 // ── Step 5: Run container ─────────────────────────────────────────────────────
