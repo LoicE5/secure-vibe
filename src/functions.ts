@@ -4,19 +4,11 @@ import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
 import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, DOCKERFILE_PATH, IMAGE_CHECK_PATH, IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
-import type { Runtime, SaveMode } from "./interfaces"
+import type { Runtime, SaveMode, ParsedArgs } from "./interfaces"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
-export function parseArgs(): {
-  directory: string | null
-  save: string | null
-  runtime: string | null
-  command: string | null
-  exclude: string | null
-  build: boolean
-  buildNoCache: boolean
-} {
+export function parseArgs(): ParsedArgs {
   const argv = process.argv.slice(2)
   const positionals: string[] = []
   let save: string | null = null
