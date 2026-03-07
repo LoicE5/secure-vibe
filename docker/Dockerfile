@@ -58,7 +58,7 @@ ENV PATH="/home/viber/.local/bin:${PATH}"
 RUN cat >> /home/viber/.bashrc <<'EOF'
 
 # secure-vibe: auto-start claude on first shell
-if [[ $SHLVL -eq 1 ]]; then
+if [[ $SHLVL -eq 1 && -z "${SECURE_VIBE_EXPLICIT_CMD:-}" ]]; then
   claude --dangerously-skip-permissions || true
   echo ""
   echo "Claude exited. Type 'claude' to restart."

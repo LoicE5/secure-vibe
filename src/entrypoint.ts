@@ -67,7 +67,13 @@ if (credentials) {
 process.on("SIGINT", () => {})
 
 const cmd = process.argv.slice(2)
-const proc = Bun.spawn(cmd.length > 0 ? cmd : ["bash", "-i"], {
+const isExplicitCmd = cmd.length > 0
+const childEnv = isExplicitCmd
+  ? { ...process.env, SECURE_VIBE_EXPLICIT_CMD: "1" }
+  : process.env
+
+const proc = Bun.spawn(isExplicitCmd ? cmd : ["bash", "-i"], {
+  env: childEnv,
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit"
