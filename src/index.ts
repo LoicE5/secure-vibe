@@ -26,7 +26,7 @@ const credentialsJson = await resolveCredentials()
 if (saveMode !== "no") await saveDirectory(workDir, saveMode)
 
 await ensureImage(runtime, buildFlag, buildNCFlag)
-console.info(`Starting container. Entrypoint: ${cmdValue ?? "Claude - bypass permissions"}`)
+console.info(`\x1b[32mStarting container. Entrypoint: ${cmdValue ?? "Claude - bypass permissions"}\x1b[0m`)
 const exitCode = await runContainer(runtime, workDir, credentialsJson, cmdValue)
 
 process.exit(CLEAN_EXIT_CODES.has(exitCode) ? 0 : exitCode)
