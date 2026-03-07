@@ -48,6 +48,14 @@ if (credentials) {
   // Ensure onboarding flags are set so Claude skips first-run setup prompts.
   // Keychain-sourced credentials only carry auth tokens, not UI state.
   if (!parsed.hasCompletedOnboarding) parsed.hasCompletedOnboarding = true
+  if (!parsed.bypassPermissionsModeAccepted) parsed.bypassPermissionsModeAccepted = true
+
+  const APP_DIR = "/home/viber/app"
+  if (!parsed.projects) parsed.projects = {}
+  const projects = parsed.projects as Record<string, Record<string, unknown>>
+  if (!projects[APP_DIR]) projects[APP_DIR] = {}
+  if (!projects[APP_DIR].hasTrustDialogAccepted) projects[APP_DIR].hasTrustDialogAccepted = true
+
   await writeFile(`${HOME_DIR}/.claude.json`, JSON.stringify(parsed), { mode: 0o600 })
 
   // ~/.claude/.credentials.json — auth fields only (legacy fallback)
