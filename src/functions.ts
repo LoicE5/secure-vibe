@@ -53,7 +53,7 @@ export function parseArgs(): {
     directory: positionals.at(0) ?? null,
     save,
     runtime,
-    command: command ?? positionals.at(1) ?? null,
+    command: command ?? (positionals.slice(1).join(" ") || null),
     build,
     buildNoCache,
   }
