@@ -3,6 +3,11 @@
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
+    "env:init": "cp -n .env.example .env",
+    "build": "bun run scripts/build.ts && bun run cleanup",
+    "build:arm64": "bun run scripts/build.ts arm64 && bun run cleanup",
+    "build:x64": "bun run scripts/build.ts x64 && bun run cleanup",
+    "cleanup": "rm -f ./.*-*.bun-build",
     "setup:alias": "bun scripts/alias.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
     "prune:image": "docker rmi docker.io/loice5/secure-vibe:latest"

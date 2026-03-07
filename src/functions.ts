@@ -322,6 +322,10 @@ async function checkForUpdates(runtime: Runtime): Promise<void> {
 
 export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false): Promise<void> {
   if(build || buildNoCache) {
+    if(!(await Bun.file(DOCKERFILE_PATH).exists())) {
+      console.error(`✗ --build is only available when running from the project source directory. Dockerfile not found at: ${DOCKERFILE_PATH}`)
+      process.exit(1)
+    }
     console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${IMAGE_NAME}"…`)
     await buildImage(runtime, buildNoCache)
     return
