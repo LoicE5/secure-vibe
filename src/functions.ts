@@ -411,7 +411,7 @@ export async function resolveExcludedFiles(workDir: string, patterns: string[]):
   const seen = new Set<string>()
   for(const pattern of patterns) {
     const glob = new Bun.Glob(pattern)
-    for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true })) {
+    for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true, dot: true })) {
       seen.add(relPath)
     }
   }
