@@ -2,7 +2,8 @@
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
-    "prune:brew": "docker volume rm secure-vibe-brew"
+    "prune:brew": "docker volume rm secure-vibe-brew",
+    "prune:image": "docker rmi secure-vibe"
   },
   "devDependencies": {
     "@types/bun": "latest"

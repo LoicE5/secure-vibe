@@ -66,7 +66,8 @@ if (credentials) {
 // without terminating the shell itself.
 process.on("SIGINT", () => {})
 
-const proc = Bun.spawn(["bash", "-i"], {
+const cmd = process.argv.slice(2)
+const proc = Bun.spawn(cmd.length > 0 ? cmd : ["bash", "-i"], {
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit"
