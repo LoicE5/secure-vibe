@@ -4,7 +4,7 @@
     "start": "bun src/index.ts",
     "vibe": "bun run start",
     "prune:brew": "docker volume rm secure-vibe-brew",
-    "prune:image": "docker rmi secure-vibe"
+    "prune:image": "docker rmi docker.io/loice5/secure-vibe:latest"
   },
   "devDependencies": {
     "@types/bun": "latest"
