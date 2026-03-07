@@ -53,17 +53,22 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/home/viber/.local/bin:${PATH}"
 
-# Auto-start claude when the user enters the container shell.
-# SHLVL guard ensures it only fires on the outermost bash, not on sub-shells.
-RUN cat >> /home/viber/.bashrc <<'EOF'
-
-# secure-vibe: auto-start claude on first shell
-if [[ $SHLVL -eq 1 && -z "${SECURE_VIBE_EXPLICIT_CMD:-}" ]]; then
-  claude --dangerously-skip-permissions || true
-  echo ""
-  echo "Claude exited. Type 'claude' to restart."
-fi
-EOF
+# Aliases + auto-start appended to .bashrc.
+# claude-default hits the real binary via `command`; claude always passes --dangerously-skip-permissions.
+# The SHLVL guard ensures auto-start fires only on the outermost bash, not on sub-shells.
+RUN printf '%s\n' \
+    '' \
+    '# secure-vibe: claude aliases' \
+    "alias claude-default='command claude'" \
+    "alias claude='claude --dangerously-skip-permissions'" \
+    '' \
+    '# secure-vibe: auto-start claude on first shell' \
+    'if [[ $SHLVL -eq 1 && -z "${SECURE_VIBE_EXPLICIT_CMD:-}" ]]; then' \
+    '  claude --dangerously-skip-permissions || true' \
+    '  echo ""' \
+    "  echo \"Claude exited. Type 'claude' to restart.\"" \
+    'fi' \
+    >> /home/viber/.bashrc
 
 COPY --chown=viber:viber src/entrypoint.ts /home/viber/entrypoint.ts
 
