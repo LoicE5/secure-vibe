@@ -13,7 +13,7 @@ const targetMap: Record<string, string> = {
   x64: "bun-darwin-x64"
 }
 
-const outfile = join(import.meta.dir, "..", "dist", "secure-vibe")
+const outfile = join(import.meta.dir, "..", "dist", arch ? `secure-vibe-${arch}` : "secure-vibe")
 
 const buildArgs = ["build", "--compile", "src/index.ts", "--outfile", outfile]
 if(arch) buildArgs.push("--target", targetMap[arch])
