@@ -6,7 +6,7 @@ export const CLAUDE_DIR = join(homedir(), ".claude")
 export const CLAUDE_JSON_PATH = join(homedir(), ".claude.json")
 
 export const IMAGE_NAME = "docker.io/loice5/secure-vibe:latest"
-export const IMAGE_CHECK_PATH = join(homedir(), ".claude", "secure-vibe-image-check")
+export const IMAGE_CHECK_PATH = join(homedir(), ".cache", "secure-vibe", "image-check")
 // Project root — used as the Docker build context so COPY paths resolve correctly.
 export const PROJECT_DIR = join(import.meta.dir, "..")
 // Explicit Dockerfile path, passed via -f so the file can live outside the build context root.

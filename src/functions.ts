@@ -318,6 +318,7 @@ async function checkForUpdates(runtime: Runtime): Promise<void> {
     console.info(`  Image is already up to date.`)
   }
 
+  await mkdir(dirname(IMAGE_CHECK_PATH), { recursive: true })
   await Bun.write(IMAGE_CHECK_PATH, today)
 }
 
