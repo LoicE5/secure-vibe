@@ -1,4 +1,4 @@
-import { access, constants, readFile } from "fs/promises"
+import { access, constants, readFile, rename, mkdir } from "fs/promises"
 import { createInterface } from "readline"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
@@ -13,6 +13,7 @@ export function parseArgs(): {
   save: string | null
   runtime: string | null
   command: string | null
+  exclude: string | null
   build: boolean
   buildNoCache: boolean
 } {
@@ -21,6 +22,7 @@ export function parseArgs(): {
   let save: string | null = null
   let runtime: string | null = null
   let command: string | null = null
+  let exclude: string | null = null
   let build = false
   let buildNoCache = false
 
@@ -43,6 +45,10 @@ export function parseArgs(): {
       command = arg.slice("--command=".length)
     } else if(arg === "--command" && index + 1 < argv.length) {
       command = argv.at(index + 1)!; consumed.add(index + 1)
+    } else if(arg.startsWith("--exclude=")) {
+      exclude = arg.slice("--exclude=".length)
+    } else if(arg === "--exclude" && index + 1 < argv.length) {
+      exclude = argv.at(index + 1)!; consumed.add(index + 1)
     } else if(!arg.startsWith("-")) {
       positionals.push(arg)
     }
@@ -54,6 +60,7 @@ export function parseArgs(): {
     save,
     runtime,
     command: command ?? (positionals.slice(1).join(" ") || null),
+    exclude,
     build,
     buildNoCache,
   }
@@ -392,6 +399,78 @@ export async function runScrolling(args: string[], opts: { cwd?: string; windowS
 
   await Promise.all([consume(proc.stdout), consume(proc.stderr)])
   return proc.exited
+}
+
+// ── Exclude / secrets ─────────────────────────────────────────────────────────
+
+export function parseExcludePatterns(raw: string): string[] {
+  return raw.split(",").map(pattern => pattern.trim()).filter(pattern => pattern.length > 0)
+}
+
+export async function resolveExcludedFiles(workDir: string, patterns: string[]): Promise<string[]> {
+  const seen = new Set<string>()
+  for(const pattern of patterns) {
+    const glob = new Bun.Glob(pattern)
+    for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true })) {
+      seen.add(relPath)
+    }
+  }
+  return [...seen].sort()
+}
+
+export async function isGitIgnored(workDir: string, relPath: string): Promise<boolean> {
+  const proc = Bun.spawn(["git", "check-ignore", "-q", relPath], {
+    cwd: workDir,
+    stdout: "pipe",
+    stderr: "pipe"
+  })
+  return await proc.exited === 0
+}
+
+type SecretEntry = { flatName: string; originalRelPath: string }
+
+export async function moveSecretsOut(workDir: string, relPaths: string[]): Promise<string> {
+  const secretsDir = join(dirname(workDir), `${basename(workDir)}-${timestamp()}-secrets`)
+  await mkdir(secretsDir, { recursive: true })
+
+  const manifest: SecretEntry[] = []
+
+  for(const relPath of relPaths) {
+    const ignored = await isGitIgnored(workDir, relPath)
+    if(!ignored) {
+      console.warn(`\x1b[33m  ⚠ ${relPath} is not gitignored — moving it will affect git status\x1b[0m`)
+    }
+
+    const flatName = relPath.replaceAll("/", "__")
+    await rename(join(workDir, relPath), join(secretsDir, flatName))
+    manifest.push({ flatName, originalRelPath: relPath })
+  }
+
+  await Bun.write(join(secretsDir, "manifest.json"), JSON.stringify(manifest, null, 2))
+  return secretsDir
+}
+
+export async function moveSecretsBack(workDir: string, secretsDir: string): Promise<void> {
+  let manifest: SecretEntry[]
+  try {
+    manifest = JSON.parse(await readFile(join(secretsDir, "manifest.json"), "utf-8")) as SecretEntry[]
+  } catch(error: unknown) {
+    console.error("  ✗ Could not read secrets manifest — files were NOT restored:", error)
+    return
+  }
+
+  for(const { flatName, originalRelPath } of manifest) {
+    try {
+      const destination = join(workDir, originalRelPath)
+      await mkdir(dirname(destination), { recursive: true })
+      await rename(join(secretsDir, flatName), destination)
+      console.info(`  Restored: ${originalRelPath}`)
+    } catch(error: unknown) {
+      console.error(`  ✗ Failed to restore ${originalRelPath}:`, error)
+    }
+  }
+
+  console.warn(`\x1b[33m  ⚠ Secrets directory was NOT deleted: ${secretsDir}\n  Delete it manually once you have confirmed all files are restored.\x1b[0m`)
 }
 
 export async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<void> {
