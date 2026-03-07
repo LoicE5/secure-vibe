@@ -1,4 +1,5 @@
 import { parseArgs, getEnvConfig, getBoolEnv, selectDirectory, selectSaveOption, selectRuntime, resolveCredentials, ensureImage, runContainer, saveDirectory } from "./functions"
+import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -28,4 +29,4 @@ await ensureImage(runtime, buildFlag, buildNCFlag)
 console.info(`Starting container. Entrypoint: ${cmdValue ?? "Claude - bypass permissions"}`)
 const exitCode = await runContainer(runtime, workDir, credentialsJson, cmdValue)
 
-process.exit(exitCode)
+process.exit(CLEAN_EXIT_CODES.has(exitCode) ? 0 : exitCode)

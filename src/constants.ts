@@ -13,6 +13,13 @@ export const DOCKERFILE_PATH = join(import.meta.dir, "..", "docker", "Dockerfile
 
 export const VALID_SAVE_MODES: SaveMode[] = ["zip", "copy", "no"]
 
+// Exit codes that indicate a normal user-initiated termination (e.g. typing exit,
+// pressing Ctrl+C). These are mapped to 0 so Bun doesn't print a script error.
+export const CLEAN_EXIT_CODES = new Set<number>([
+  130, // SIGINT (Ctrl+C / shell exit)
+  143 // SIGTERM
+])
+
 export const BANNED_DIRS = new Set<string>([
   homedir(),
   "/",
