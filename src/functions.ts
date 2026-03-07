@@ -8,14 +8,68 @@ import type { Runtime, SaveMode } from "./interfaces"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
-export function parseArg(flag: string): string | null {
-  const args = process.argv.slice(2)
-  for (let i = 0; i < args.length; i++) {
-    const current = args.at(i)!
-    if (current.startsWith(`${flag}=`)) return current.slice(flag.length + 1)
-    if (current === flag && i + 1 < args.length) return args.at(i + 1) ?? null
+export function parseArgs(): {
+  directory: string | null
+  save: string | null
+  runtime: string | null
+  command: string | null
+  build: boolean
+  buildNoCache: boolean
+} {
+  const argv = process.argv.slice(2)
+  const positionals: string[] = []
+  let save: string | null = null
+  let runtime: string | null = null
+  let command: string | null = null
+  let build = false
+  let buildNoCache = false
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!
+    if (arg === "--build-no-cache") {
+      buildNoCache = true
+    } else if (arg === "--build") {
+      build = true
+    } else if (arg.startsWith("--runtime=")) {
+      runtime = arg.slice("--runtime=".length)
+    } else if (arg === "--runtime" && i + 1 < argv.length) {
+      runtime = argv[++i]!
+    } else if (arg.startsWith("--save=")) {
+      save = arg.slice("--save=".length)
+    } else if (arg === "--save" && i + 1 < argv.length) {
+      save = argv[++i]!
+    } else if (arg.startsWith("--command=")) {
+      command = arg.slice("--command=".length)
+    } else if (arg === "--command" && i + 1 < argv.length) {
+      command = argv[++i]!
+    } else if (!arg.startsWith("-")) {
+      positionals.push(arg)
+    }
+    // Unknown flags are ignored
   }
-  return null
+
+  return {
+    directory: positionals[0] ?? null,
+    save,
+    runtime,
+    command: command ?? (positionals[0] !== undefined ? (positionals[1] ?? null) : null),
+    build,
+    buildNoCache,
+  }
+}
+
+// ── Env helpers ───────────────────────────────────────────────────────────────
+
+// Returns null if the env var is unset or explicitly set to "prompt".
+export function getEnvConfig(key: string): string | null {
+  const val = process.env[key]
+  if (!val || val.toLowerCase() === "prompt") return null
+  return val
+}
+
+// Returns true if the env var is set to "true", "1", or "yes" (case-insensitive).
+export function getBoolEnv(key: string): boolean {
+  return ["true", "1", "yes"].includes(process.env[key]?.toLowerCase() ?? "")
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -61,7 +115,20 @@ export function timestamp() {
 
 // ── Step 1: Directory selection ───────────────────────────────────────────────
 
-export async function selectDirectory(): Promise<string> {
+export async function selectDirectory(preValue: string | null): Promise<string> {
+  if (preValue !== null) {
+    const targetPath = preValue === "." || preValue === "" ? process.cwd() : resolve(preValue)
+    if (!(await isDirectory(targetPath))) {
+      console.error(`  ✗ Not a valid directory: ${targetPath}`)
+      process.exit(1)
+    }
+    if (isBannedDirectory(targetPath)) {
+      console.error(`  ✗ Mounting "${targetPath}" is not allowed for security reasons.`)
+      process.exit(1)
+    }
+    return targetPath
+  }
+
   while (true) {
     const input = await prompt("Directory to mount (leave blank for current directory): ")
     const targetPath = input === "" ? process.cwd() : resolve(input)
@@ -82,7 +149,7 @@ export async function selectDirectory(): Promise<string> {
 
 // ── Step 2: Runtime detection ─────────────────────────────────────────────────
 
-export async function selectRuntime(): Promise<Runtime> {
+export async function selectRuntime(preValue: string | null): Promise<Runtime> {
   const dockerAvailable = (await commandExists("docker")) && (await testRuntime("docker"))
   const podmanAvailable = (await commandExists("podman")) && (await testRuntime("podman"))
 
@@ -92,19 +159,26 @@ export async function selectRuntime(): Promise<Runtime> {
   }
 
   if (dockerAvailable && !podmanAvailable) {
+    if (preValue && preValue !== "docker") console.warn(`  ⚠ Runtime "${preValue}" not available, using docker.`)
     console.info("  Using docker.")
     return "docker"
   }
 
   if (podmanAvailable && !dockerAvailable) {
+    if (preValue && preValue !== "podman") console.warn(`  ⚠ Runtime "${preValue}" not available, using podman.`)
     console.info("  Using podman.")
     return "podman"
   }
 
-  // Both available — check env preference first
-  const envPreference = process.env.RUNTIME?.toLowerCase()
-  if (envPreference === "docker") return "docker"
-  if (envPreference === "podman") return "podman"
+  // Both available — use preValue if valid
+  if (preValue !== null) {
+    const normalized = preValue.toLowerCase()
+    if (normalized === "docker" || normalized === "podman") {
+      console.info(`  Using ${normalized}.`)
+      return normalized as Runtime
+    }
+    console.warn(`  ✗ Invalid runtime "${preValue}". Expected: docker, podman. Prompting…`)
+  }
 
   // Prompt
   while (true) {
@@ -177,29 +251,31 @@ export async function resolveCredentials(): Promise<string | null> {
 
 // ── Step 4: Image check + build ───────────────────────────────────────────────
 
-export async function ensureImage(runtime: Runtime): Promise<void> {
-  const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
-
-  if (imageId !== "") {
-    console.info(`  Image "${IMAGE_NAME}" found.`)
-    return
+export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false): Promise<void> {
+  if (!build && !buildNoCache) {
+    const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+    if (imageId !== "") {
+      console.info(`  Image "${IMAGE_NAME}" found.`)
+      return
+    }
+    console.info(`  Image "${IMAGE_NAME}" not found. Building…`)
+  } else {
+    console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${IMAGE_NAME}"…`)
   }
-
-  console.info(`  Image "${IMAGE_NAME}" not found. Building…`)
 
   const { uid, gid } = userInfo()
 
-  const buildProcess = Bun.spawn(
-    [
-      runtime, "build",
-      "-f", DOCKERFILE_PATH,
-      "--build-arg", `UID=${uid}`,
-      "--build-arg", `GID=${gid}`,
-      "-t", IMAGE_NAME,
-      PROJECT_DIR
-    ],
-    { stdin: "inherit", stdout: "inherit", stderr: "inherit" }
-  )
+  const buildArgs = [
+    runtime, "build",
+    "-f", DOCKERFILE_PATH,
+    "--build-arg", `UID=${uid}`,
+    "--build-arg", `GID=${gid}`,
+    "-t", IMAGE_NAME,
+  ]
+  if (buildNoCache) buildArgs.push("--no-cache")
+  buildArgs.push(PROJECT_DIR)
+
+  const buildProcess = Bun.spawn(buildArgs, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
 
   const buildExit = await buildProcess.exited
   if (buildExit !== 0) {
@@ -215,7 +291,8 @@ export async function ensureImage(runtime: Runtime): Promise<void> {
 export async function runContainer(
   runtime: Runtime,
   workDir: string,
-  credentialsJson: string | null
+  credentialsJson: string | null,
+  command: string | null = null
 ): Promise<number> {
   const args = [
     runtime, "run", "--rm", "-it",
@@ -237,20 +314,29 @@ export async function runContainer(
 
   args.push(IMAGE_NAME)
 
+  if (command !== null) {
+    // Wrap in bash -c if the command contains shell metacharacters or spaces
+    if (/[\s&|;<>$]/.test(command)) {
+      args.push("bash", "-c", command)
+    } else {
+      args.push(command)
+    }
+  }
+
   const containerProcess = Bun.spawn(args, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
   return await containerProcess.exited ?? 0
 }
 
 // ── Step 6: Save options ──────────────────────────────────────────────────────
 
-export async function selectSaveOption(workDir: string, saveArg: string | null): Promise<SaveMode> {
-  if (saveArg !== null) {
-    const normalized = saveArg.toLowerCase() as SaveMode
+export async function selectSaveOption(workDir: string, preValue: string | null): Promise<SaveMode> {
+  if (preValue !== null) {
+    const normalized = preValue.toLowerCase() as SaveMode
     if (VALID_SAVE_MODES.includes(normalized)) {
-      if (normalized !== "no") console.info(`  Save mode: ${normalized} (from --save arg)`)
+      if (normalized !== "no") console.info(`  Save mode: ${normalized}`)
       return normalized
     }
-    console.warn(`  ✗ Invalid --save value "${saveArg}". Expected: zip, copy, no.`)
+    console.warn(`  ✗ Invalid save value "${preValue}". Expected: zip, copy, no.`)
   }
 
   const parent = dirname(workDir)
