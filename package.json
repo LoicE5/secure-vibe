@@ -3,6 +3,7 @@
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
+    "setup:alias": "bun scripts/alias.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
     "prune:image": "docker rmi docker.io/loice5/secure-vibe:latest"
   },

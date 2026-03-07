@@ -28,19 +28,23 @@ export function parseArgs(): ParsedArgs {
     } else if(arg.startsWith("--runtime=")) {
       runtime = arg.slice("--runtime=".length)
     } else if(arg === "--runtime" && index + 1 < argv.length) {
-      runtime = argv.at(index + 1)!; consumed.add(index + 1)
+      runtime = argv.at(index + 1)!
+      consumed.add(index + 1)
     } else if(arg.startsWith("--save=")) {
       save = arg.slice("--save=".length)
     } else if(arg === "--save" && index + 1 < argv.length) {
-      save = argv.at(index + 1)!; consumed.add(index + 1)
+      save = argv.at(index + 1)!
+      consumed.add(index + 1)
     } else if(arg.startsWith("--command=")) {
       command = arg.slice("--command=".length)
     } else if(arg === "--command" && index + 1 < argv.length) {
-      command = argv.at(index + 1)!; consumed.add(index + 1)
+      command = argv.at(index + 1)!
+      consumed.add(index + 1)
     } else if(arg.startsWith("--exclude=")) {
       exclude = arg.slice("--exclude=".length)
     } else if(arg === "--exclude" && index + 1 < argv.length) {
-      exclude = argv.at(index + 1)!; consumed.add(index + 1)
+      exclude = argv.at(index + 1)!
+      consumed.add(index + 1)
     } else if(!arg.startsWith("-")) {
       positionals.push(arg)
     }
@@ -408,7 +412,7 @@ export async function selectSaveOption(workDir: string, preValue: string | null)
   }
 }
 
-export async function runScrolling(args: string[], opts: { cwd?: string; windowSize?: number } = {}): Promise<number> {
+export async function runScrolling(args: string[], opts: { cwd?: string, windowSize?: number } = {}): Promise<number> {
   const { cwd, windowSize = 5 } = opts
 
   if(!process.stdout.isTTY) {
@@ -473,7 +477,7 @@ export async function isGitIgnored(workDir: string, relPath: string): Promise<bo
   return await proc.exited === 0
 }
 
-type SecretEntry = { flatName: string; originalRelPath: string }
+type SecretEntry = { flatName: string, originalRelPath: string }
 
 export async function moveSecretsOut(workDir: string, relPaths: string[]): Promise<string> {
   const secretsDir = join(dirname(workDir), `${basename(workDir)}-${timestamp()}-secrets`)
@@ -530,11 +534,11 @@ export async function saveDirectory(workDir: string, mode: "zip" | "copy"): Prom
     if(mode === "zip") {
       console.info(`  Zipping "${name}" to ${dest} ...`)
       const code = await runScrolling(["zip", "-r", dest, "."], { cwd: workDir })
-      if(code !== 0) { console.error(`  ✗ zip failed (exit ${code}).`); return }
+      if(code !== 0) { return console.error(`  ✗ zip failed (exit ${code}).`) }
     } else {
       console.info(`  Copying "${name}" to ${dest} ...`)
       const code = await runScrolling(["rsync", "-avh", "--progress", workDir, dest])
-      if(code !== 0) { console.error(`  ✗ rsync failed (exit ${code}).`); return }
+      if(code !== 0) { return console.error(`  ✗ rsync failed (exit ${code}).`) }
     }
 
     console.info(`  Saved to: ${dest}`)
