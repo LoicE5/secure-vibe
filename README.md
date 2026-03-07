@@ -68,7 +68,7 @@ Credentials are resolved automatically in this order:
 
 The host `~/.claude` directory is mounted **read-only**. Credentials are injected into the container via an environment variable and written to the container's own `~/.claude` — nothing is ever written back to the host.
 
-## bun scripts
+## Bun scripts
 
 | Script | Description |
 |---|---|
