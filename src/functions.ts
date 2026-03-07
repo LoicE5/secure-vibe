@@ -303,7 +303,9 @@ async function checkForUpdates(runtime: Runtime): Promise<void> {
   const pulled = await pullImage(runtime)
 
   if(!pulled) {
-    console.warn(`  Could not reach Docker Hub to check for updates.`)
+    console.warn(`  Could not reach registry to check for updates. Will retry tomorrow.`)
+    await mkdir(dirname(IMAGE_CHECK_PATH), { recursive: true })
+    await Bun.write(IMAGE_CHECK_PATH, today)
     return
   }
 
@@ -325,9 +327,10 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
     return
   }
 
-  const imageId = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+  const inspectProcess = Bun.spawnSync([runtime, "image", "inspect", IMAGE_NAME], { stdout: null, stderr: null })
+  const imageFound = inspectProcess.exitCode === 0
 
-  if(imageId !== "") {
+  if(imageFound) {
     await checkForUpdates(runtime)
     return
   }
