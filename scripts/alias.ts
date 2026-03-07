@@ -4,7 +4,7 @@ import { join } from "path"
 const ALIAS_NAME = "secure-vibe"
 const PROJECT_DIR = join(import.meta.dir, "..")
 const MARKER = "# secure-vibe alias"
-const ALIAS_LINE = `alias ${ALIAS_NAME}='bun run --cwd ${PROJECT_DIR} start'`
+const ALIAS_LINE = `alias ${ALIAS_NAME}='bun ${PROJECT_DIR}/src/index.ts'`
 
 function addAlias(aliasFile: string, rcFile: string): void {
     if(!existsSync(aliasFile)) {
