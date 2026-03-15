@@ -1,4 +1,5 @@
 import { join } from "path"
+import { mkdir } from "node:fs/promises"
 
 type Target = "linux-x64" | "linux-arm64" | "macos-x64" | "macos-arm64"
 
@@ -21,6 +22,8 @@ if(requestedTarget !== undefined && !(requestedTarget in BUN_TARGET)) {
 const targets: Target[] = requestedTarget ? [requestedTarget] : ALL_TARGETS
 
 const projectRoot = join(import.meta.dir, "..")
+
+await mkdir(join(projectRoot, "dist"), { recursive: true })
 
 for(const target of targets) {
   const outfile = join(projectRoot, "dist", `secure-vibe-${target}`)
