@@ -88,7 +88,11 @@ async function setupCA(): Promise<void> {
     "-subj", "/CN=secure-vibe-mitm/O=secure-vibe"
   ])
 
-  await run(["chmod", "600", `${CA_DIR}/keys/ca.private.key`, `${CA_DIR}/keys/ca.public.key`, `${CA_DIR}/certs/ca.pem`])
+  // Private key: only mitm can read; cert + public key: world-readable for NODE_EXTRA_CA_CERTS
+  await run(["chmod", "600", `${CA_DIR}/keys/ca.private.key`])
+  await run(["chmod", "644", `${CA_DIR}/keys/ca.public.key`, `${CA_DIR}/certs/ca.pem`])
+  // useradd -r creates home dirs with mode 700; make it traversable so viber can read certs/ca.pem
+  await run(["chmod", "755", "/home/mitm", CA_DIR, `${CA_DIR}/certs`])
   await run(["chown", "-R", "mitm:mitm", CA_DIR])
 
   // Install CA into system trust store (for curl, apt, pip, etc.)

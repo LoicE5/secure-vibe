@@ -4,6 +4,18 @@ import { API_ALLOWLIST, PASS_THROUGH_HOSTS, READ_METHODS } from "./rules"
 
 const CA_DIR = "/home/mitm/.mitmproxy"
 
+// The library unconditionally calls console.error(kind) + console.error(err) before
+// our onError handler runs. Suppress the noisy output for expected connection errors.
+{
+  const _error = console.error
+  console.error = (...args: unknown[]) => {
+    if(typeof args[0] === "string" && /^[A-Z][A-Z_]+_ERROR$/.test(args[0])) return
+    const code = (args[0] instanceof Error) ? (args[0] as NodeJS.ErrnoException).code : undefined
+    if(code && ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EPIPE", "EHOSTUNREACH", "ENETUNREACH"].includes(code)) return
+    _error(...args)
+  }
+}
+
 function isHostApiAllowlisted(hostname: string): boolean {
   for(const allowed of API_ALLOWLIST) {
     if(hostname === allowed || hostname.endsWith(`.${allowed}`)) return true
@@ -53,9 +65,24 @@ export async function runProxy(): Promise<void> {
     callback()
   })
 
-  proxy.onError((ctx, error: Error) => {
+  proxy.onError((ctx, error: Error, errorKind?: string) => {
     const host = ctx?.clientToProxyRequest?.headers?.host ?? "unknown"
-    console.error(`[proxy] Error for ${host}: ${error.message}`)
+    const response = ctx?.proxyToClientResponse
+    if(response && !response.headersSent) {
+      const body = `[secure-vibe] ${host} is not reachable — blocked by firewall or unavailable.\n`
+      try {
+        response.writeHead(403, {
+          "Content-Type": "text/plain",
+          "Content-Length": String(Buffer.byteLength(body)),
+          "Connection": "close"
+        })
+        response.end(body)
+      } catch { /* already closed */ }
+    }
+    const code = (error as NodeJS.ErrnoException).code
+    if(!code || !["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EPIPE", "EHOSTUNREACH", "ENETUNREACH"].includes(code)) {
+      console.error(`[proxy] ${errorKind ?? "Error"} for ${host}: ${error.message}`)
+    }
   })
 
   await new Promise<void>((resolve, reject) => {
