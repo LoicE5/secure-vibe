@@ -16,9 +16,7 @@ async function run(args: string[]): Promise<void> {
 async function runOptional(args: string[]): Promise<void> {
   try {
     await run(args)
-  } catch(error: unknown) {
-    console.warn(`[firewall] Optional command failed (ignored): ${args.join(" ")}`)
-  }
+  } catch { /* optional — failure is expected and ignored */ }
 }
 
 async function resolveDomain(domain: string): Promise<{ v4: string[], v6: string[] }> {
