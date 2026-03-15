@@ -362,6 +362,8 @@ export async function runContainer(
 ): Promise<number> {
   const args = [
     runtime, "run", "--rm", "-it",
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
     "-v", `${workDir}:/home/viber/app`,
     // Mount as read-only so the container never writes back to the host's ~/.claude.
     // The entrypoint copies it to a writable location inside the container.
@@ -377,6 +379,12 @@ export async function runContainer(
     // inside the container. Nothing is ever written to the host's ~/.claude.
     args.push("-e", `CLAUDE_CREDENTIALS=${credentialsJson}`)
   }
+
+  const firewallAllow = process.env["FIREWALL_ALLOW"]
+  if(firewallAllow) args.push("-e", `FIREWALL_ALLOW=${firewallAllow}`)
+
+  const firewallBlock = process.env["FIREWALL_BLOCK"]
+  if(firewallBlock) args.push("-e", `FIREWALL_BLOCK=${firewallBlock}`)
 
   args.push(IMAGE_NAME)
 

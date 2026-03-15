@@ -9,6 +9,12 @@ RUN apt-get update \
         curl \
         build-essential \
         ca-certificates \
+        iptables \
+        ipset \
+        iproute2 \
+        dnsutils \
+        jq \
+        sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home
@@ -28,10 +34,9 @@ RUN mkdir -p /home/linuxbrew && chown viber:viber /home/linuxbrew
 # initialized on first run without requiring root inside the container.
 RUN mkdir -p /opt/linuxbrew-seed && chown viber:viber /opt/linuxbrew-seed
 
-# Lock root: remove login shell and lock the password before dropping privileges
-RUN passwd -l root && usermod -s /usr/sbin/nologin root
-
-# ── Drop to non-root — root is no longer reachable from this point ───────────
+# ── Drop to non-root ─────────────────────────────────────────────────────────
+# Note: no sudoers entry for viber yet — brew's have_sudo_access() will return
+# false and the install proceeds rootless, as it did before sudo was added.
 USER viber
 WORKDIR /home/viber/app
 
@@ -52,6 +57,21 @@ RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/home/viber/.local/bin:${PATH}"
+
+# ── Root phase 2: firewall setup + permanent root lockdown ───────────────────
+USER root
+
+COPY docker/init-firewall.sh /usr/local/bin/init-firewall.sh
+RUN chmod 755 /usr/local/bin/init-firewall.sh \
+    && echo "viber ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" \
+       > /etc/sudoers.d/viber-firewall \
+    && chmod 0440 /etc/sudoers.d/viber-firewall
+
+# Lock root: root is no longer needed — remove login shell and lock password
+RUN passwd -l root && usermod -s /usr/sbin/nologin root
+
+# ── Drop to viber permanently ─────────────────────────────────────────────────
+USER viber
 
 # Aliases + auto-start appended to .bashrc.
 # claude-default hits the real binary via `command`; claude always passes --dangerously-skip-permissions.

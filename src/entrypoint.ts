@@ -1,5 +1,13 @@
 import { mkdir, writeFile, access, rm } from "fs/promises"
 
+// ── Initialize firewall (runs as root via sudoers, before any user code) ─────
+const firewallProc = Bun.spawn(["sudo", "/usr/local/bin/init-firewall.sh"], {
+  stdin: "inherit",
+  stdout: "inherit",
+  stderr: "inherit",
+})
+if(await firewallProc.exited !== 0) process.exit(1)
+
 // ── Seed linuxbrew volume on first run ────────────────────────────────────────
 // The named volume at /home/linuxbrew starts empty; copy from the seed baked
 // into the image. Subsequent runs skip this entirely.
