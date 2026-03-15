@@ -1,0 +1,9 @@
+{
+  "name": "claude-mitm",
+  "dependencies": {
+    "http-mitm-proxy": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

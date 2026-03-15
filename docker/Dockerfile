@@ -12,8 +12,6 @@ RUN apt-get update \
         iptables \
         ipset \
         iproute2 \
-        dnsutils \
-        jq \
         sudo \
     && rm -rf /var/lib/apt/lists/*
 
@@ -58,14 +56,19 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/home/viber/.local/bin:${PATH}"
 
-# ── Root phase 2: firewall setup + permanent root lockdown ───────────────────
+# ── Root phase 2: claude-mitm + permanent root lockdown ──────────────────────
 USER root
 
-COPY docker/init-firewall.sh /usr/local/bin/init-firewall.sh
-RUN chmod 755 /usr/local/bin/init-firewall.sh \
-    && echo "viber ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" \
-       > /etc/sudoers.d/viber-firewall \
-    && chmod 0440 /etc/sudoers.d/viber-firewall
+COPY --chown=root:root claude-mitm/ /opt/claude-mitm/
+RUN cd /opt/claude-mitm && bun install \
+    && bun build --compile src/index.ts --outfile /usr/local/bin/claude-mitm \
+    && rm -rf /opt/claude-mitm
+RUN useradd -r -s /usr/sbin/nologin -d /home/mitm -m mitm \
+    && printf '%s\n' \
+       "viber ALL=(root) NOPASSWD: /usr/local/bin/claude-mitm setup" \
+       "viber ALL=(mitm) NOPASSWD: /usr/local/bin/claude-mitm proxy" \
+       > /etc/sudoers.d/viber-mitm \
+    && chmod 0440 /etc/sudoers.d/viber-mitm
 
 # Lock root: root is no longer needed — remove login shell and lock password
 RUN passwd -l root && usermod -s /usr/sbin/nologin root
@@ -89,6 +92,7 @@ RUN printf '%s\n' \
     "  echo \"Claude exited. Type 'claude' to restart.\"" \
     'fi' \
     >> /home/viber/.bashrc
+
 
 COPY --chown=viber:viber src/entrypoint.ts /home/viber/entrypoint.ts
 

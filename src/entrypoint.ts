@@ -1,12 +1,35 @@
 import { mkdir, writeFile, access, rm } from "fs/promises"
 
-// ── Initialize firewall (runs as root via sudoers, before any user code) ─────
-const firewallProc = Bun.spawn(["sudo", "/usr/local/bin/init-firewall.sh"], {
+// ── Initialize firewall and CA (runs as root via sudoers, before any user code)
+const firewallProc = Bun.spawn(["sudo", "/usr/local/bin/claude-mitm", "setup"], {
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit",
 })
 if(await firewallProc.exited !== 0) process.exit(1)
+
+// ── Start proxy (runs as 'mitm' user via sudoers, enforces GET-only) ──────────
+Bun.spawn(["sudo", "-u", "mitm", "/usr/local/bin/claude-mitm", "proxy"], {
+  stdin: "ignore",
+  stdout: "ignore",
+  stderr: "inherit",
+})
+// Poll until proxy is listening on :8080 (max ~5s)
+for(let attempt = 0; attempt < 17; attempt++) {
+  try {
+    const conn = await Bun.connect({
+      hostname: "127.0.0.1",
+      port: 8080,
+      socket: { data() {}, open() {}, close() {}, error() {} },
+    })
+    conn.end()
+    break
+  } catch {
+    if(attempt === 16) { console.error("  [entrypoint] proxy failed to start"); process.exit(1) }
+    await Bun.sleep(300)
+  }
+}
+console.info("  [entrypoint] Proxy ready.")
 
 // ── Seed linuxbrew volume on first run ────────────────────────────────────────
 // The named volume at /home/linuxbrew starts empty; copy from the seed baked
@@ -84,9 +107,15 @@ process.on("SIGINT", () => {})
 
 const cmd = process.argv.slice(2)
 const isExplicitCmd = cmd.length > 0
-const childEnv = isExplicitCmd
-  ? { ...process.env, SECURE_VIBE_EXPLICIT_CMD: "1" }
-  : process.env
+const childEnv = {
+  ...process.env,
+  NODE_EXTRA_CA_CERTS: "/home/mitm/.mitmproxy/certs/ca.pem",
+  http_proxy: "http://127.0.0.1:8080",
+  https_proxy: "http://127.0.0.1:8080",
+  HTTP_PROXY: "http://127.0.0.1:8080",
+  HTTPS_PROXY: "http://127.0.0.1:8080",
+  ...(isExplicitCmd ? { SECURE_VIBE_EXPLICIT_CMD: "1" } : {})
+}
 
 const proc = Bun.spawn(isExplicitCmd ? cmd : ["bash", "-i"], {
   env: childEnv,
