@@ -1,4 +1,4 @@
-import { access, constants, readFile, rename, mkdir } from "fs/promises"
+import { access, constants, readFile, rename, mkdir, stat } from "fs/promises"
 import { createInterface } from "readline"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
@@ -470,6 +470,13 @@ export async function resolveExcludedFiles(workDir: string, patterns: string[]):
     const glob = new Bun.Glob(pattern)
     for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true, dot: true })) {
       seen.add(relPath)
+    }
+    // Bare names (no wildcards or path separators) may be directories — move them as a unit
+    if(!pattern.includes("*") && !pattern.includes("/")) {
+      try {
+        const s = await stat(join(workDir, pattern))
+        if(s.isDirectory()) seen.add(pattern)
+      } catch {}
     }
   }
   return [...seen].sort()
