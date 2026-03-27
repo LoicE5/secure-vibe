@@ -4,6 +4,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
-    "types": ["bun-types"]
+    "types": ["bun"]
   }
 }

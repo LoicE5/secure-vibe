@@ -263,7 +263,7 @@ export async function resolveGitConfig(): Promise<{ name: string; email: string 
   async function tryGitConfig(args: string[]): Promise<string | null> {
     try {
       const proc = Bun.spawn(["git", "config", ...args], { stdout: "pipe", stderr: "pipe" })
-      const [exit, text] = await Promise.all([proc.exited, new Response(proc.stdout).text()])
+      const [exit, text] = await Promise.all([proc.exited, new Response(proc.stdout as ReadableStream).text()])
       return exit === 0 ? text.trim() || null : null
     } catch {
       return null
