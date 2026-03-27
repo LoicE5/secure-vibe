@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+- Forward host git identity (`user.name` and `user.email`) into the container so commits are attributed correctly
+- Fix bare directory names not being resolved in the excluded files list
+- Fix Bun stdout type cast and update bun types to resolve stream reading errors
+
 ## 1.0.0
 
 - Run Claude Code inside an isolated Docker or Podman container with automatic credential injection
