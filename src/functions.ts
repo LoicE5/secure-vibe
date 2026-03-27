@@ -1,4 +1,4 @@
-import { access, constants, readFile, rename, mkdir } from "fs/promises"
+import { access, constants, readFile, rename, mkdir, stat } from "fs/promises"
 import { createInterface } from "readline"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
@@ -254,6 +254,40 @@ export async function resolveCredentials(): Promise<string | null> {
   process.exit(1)
 }
 
+// ── Step 3b: Git identity resolution ─────────────────────────────────────────
+
+const GIT_FALLBACK_NAME  = "Claude"
+const GIT_FALLBACK_EMAIL = "noreply@anthropic.com"
+
+export async function resolveGitConfig(): Promise<{ name: string; email: string }> {
+  async function tryGitConfig(args: string[]): Promise<string | null> {
+    try {
+      const proc = Bun.spawn(["git", "config", ...args], { stdout: "pipe", stderr: "pipe" })
+      const [exit, text] = await Promise.all([proc.exited, Bun.readableStreamToText(proc.stdout)])
+      return exit === 0 ? text.trim() || null : null
+    } catch {
+      return null
+    }
+  }
+
+  // git config (no flag) reads local → global → system automatically.
+  // Fall back to --global explicitly in case the cwd is not a repo.
+  const name  = (await tryGitConfig(["user.name"]))  ?? (await tryGitConfig(["--global", "user.name"]))
+  const email = (await tryGitConfig(["user.email"])) ?? (await tryGitConfig(["--global", "user.email"]))
+
+  const resolvedName  = name  ?? GIT_FALLBACK_NAME
+  const resolvedEmail = email ?? GIT_FALLBACK_EMAIL
+
+  if (name && email) {
+    console.info(`\x1b[32m  Git identity forwarded from host: ${name} <${email}>\x1b[0m`)
+  } else {
+    const missing = [!name && "user.name", !email && "user.email"].filter(Boolean).join(", ")
+    console.error(`\x1b[31m  ✗ git ${missing} not found on host — falling back to: ${resolvedName} <${resolvedEmail}>\x1b[0m`)
+  }
+
+  return { name: resolvedName, email: resolvedEmail }
+}
+
 // ── Step 4: Image check + build ───────────────────────────────────────────────
 
 async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
@@ -358,7 +392,8 @@ export async function runContainer(
   runtime: Runtime,
   workDir: string,
   credentialsJson: string | null,
-  command: string | null = null
+  command: string | null = null,
+  gitConfig: { name: string; email: string } | null = null
 ): Promise<number> {
   const args = [
     runtime, "run", "--rm", "-it",
@@ -376,6 +411,11 @@ export async function runContainer(
     // Pass credentials as an env var; entrypoint writes them to .credentials.json
     // inside the container. Nothing is ever written to the host's ~/.claude.
     args.push("-e", `CLAUDE_CREDENTIALS=${credentialsJson}`)
+  }
+
+  if(gitConfig) {
+    args.push("-e", `GIT_USER_NAME=${gitConfig.name}`)
+    args.push("-e", `GIT_USER_EMAIL=${gitConfig.email}`)
   }
 
   args.push(IMAGE_NAME)
@@ -470,6 +510,13 @@ export async function resolveExcludedFiles(workDir: string, patterns: string[]):
     const glob = new Bun.Glob(pattern)
     for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true, dot: true })) {
       seen.add(relPath)
+    }
+    // Bare names (no wildcards or path separators) may be directories — move them as a unit
+    if(!pattern.includes("*") && !pattern.includes("/")) {
+      try {
+        const s = await stat(join(workDir, pattern))
+        if(s.isDirectory()) seen.add(pattern)
+      } catch {}
     }
   }
   return [...seen].sort()

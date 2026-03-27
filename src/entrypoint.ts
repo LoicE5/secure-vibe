@@ -69,6 +69,18 @@ if (credentials) {
   console.warn("  [entrypoint] CLAUDE_CREDENTIALS not set — Claude will prompt for authentication.")
 }
 
+// Apply host git identity so commits made inside the container are attributed correctly.
+const gitUserName  = process.env.GIT_USER_NAME
+const gitUserEmail = process.env.GIT_USER_EMAIL
+if (gitUserName) {
+  const p = Bun.spawn(["git", "config", "--global", "user.name", gitUserName], { stdout: "pipe", stderr: "pipe" })
+  await p.exited
+}
+if (gitUserEmail) {
+  const p = Bun.spawn(["git", "config", "--global", "user.email", gitUserEmail], { stdout: "pipe", stderr: "pipe" })
+  await p.exited
+}
+
 // Ignore SIGINT at the bun (PID 1) level so ctrl+c inside the container
 // only reaches bash's job control, which kills the foreground job (claude)
 // without terminating the shell itself.

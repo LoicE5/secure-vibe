@@ -1,4 +1,4 @@
-import { parseArgs, getEnvConfig, getBoolEnv, selectDirectory, selectSaveOption, selectRuntime, resolveCredentials, ensureImage, runContainer, saveDirectory, parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./functions"
+import { parseArgs, getEnvConfig, getBoolEnv, selectDirectory, selectSaveOption, selectRuntime, resolveCredentials, resolveGitConfig, ensureImage, runContainer, saveDirectory, parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./functions"
 import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -23,6 +23,7 @@ const saveMode = await selectSaveOption(workDir, saveValue)
 
 const runtime = await selectRuntime(rtValue)
 const credentialsJson = await resolveCredentials()
+const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
 
@@ -43,7 +44,7 @@ try {
     secretsDir = await moveSecretsOut(workDir, excludedFiles)
     console.info(`  Secrets moved: ${excludedFiles.length} file(s) → ${secretsDir}`)
   }
-  exitCode = await runContainer(runtime, workDir, credentialsJson, cmdValue)
+  exitCode = await runContainer(runtime, workDir, credentialsJson, cmdValue, gitConfig)
 } finally {
   if(secretsDir) await moveSecretsBack(workDir, secretsDir)
 }
