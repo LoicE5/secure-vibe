@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- Replace `Bun.spawn` with the Bun shell (`$`) for simple, scripting-like subprocess calls
+- Extract inline types into named interfaces for clarity
+
 ## 1.1.0
 
 - Forward host git identity (`user.name` and `user.email`) into the container so commits are attributed correctly
