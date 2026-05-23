@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.3.0
+## 2.0.0
 
-- Remove all interactive prompts: secure-vibe now starts non-interactively and goes straight into Claude
+- **Breaking:** Remove all interactive prompts: secure-vibe now starts non-interactively and goes straight into Claude
 - Default to the current directory when no directory is given
 - Default save mode to `no`
 - When both docker and podman are available, default to docker (falls back to podman); override with `RUNTIME` or `--runtime`
