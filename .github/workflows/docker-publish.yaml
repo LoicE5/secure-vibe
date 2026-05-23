@@ -4,14 +4,21 @@ on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build and Release"]
+    types:
+      - completed
 
 jobs:
   build-and-push:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
