@@ -17,6 +17,7 @@ export function parseArgs(): ParsedArgs {
   let exclude: string | null = null
   let build = false
   let buildNoCache = false
+  let pull = false
 
   const consumed = new Set<number>()
   for(const [index, arg] of argv.entries()) {
@@ -25,6 +26,8 @@ export function parseArgs(): ParsedArgs {
       buildNoCache = true
     } else if(arg === "--build") {
       build = true
+    } else if(arg === "--pull") {
+      pull = true
     } else if(arg.startsWith("--runtime=")) {
       runtime = arg.slice("--runtime=".length)
     } else if(arg === "--runtime" && index + 1 < argv.length) {
@@ -59,6 +62,7 @@ export function parseArgs(): ParsedArgs {
     exclude,
     build,
     buildNoCache,
+    pull,
   }
 }
 
@@ -350,7 +354,7 @@ async function checkForUpdates(runtime: Runtime): Promise<void> {
   await Bun.write(IMAGE_CHECK_PATH, today)
 }
 
-export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false): Promise<void> {
+export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false, pull = false): Promise<void> {
   if(build || buildNoCache) {
     if(!(await Bun.file(DOCKERFILE_PATH).exists())) {
       console.error(`✗ --build is only available when running from the project source directory. Dockerfile not found at: ${DOCKERFILE_PATH}`)
@@ -358,6 +362,17 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
     }
     console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${IMAGE_NAME}"…`)
     await buildImage(runtime, buildNoCache)
+    return
+  }
+
+  if(pull) {
+    console.info(`  Pulling latest image "${IMAGE_NAME}"…`)
+    const pulled = await pullImage(runtime)
+    if(!pulled) {
+      console.error(`✗ Image pull failed.`)
+      process.exit(1)
+    }
+    console.info(`  Image "${IMAGE_NAME}" is up to date.`)
     return
   }
 

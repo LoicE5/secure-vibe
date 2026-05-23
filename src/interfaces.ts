@@ -10,6 +10,7 @@ export interface ParsedArgs {
   exclude: string | null
   build: boolean
   buildNoCache: boolean
+  pull: boolean
 }
 
 export interface GitIdentity {
