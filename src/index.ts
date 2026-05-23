@@ -13,6 +13,7 @@ const cmdValue    = args.command      ?? getEnvConfig("COMMAND")
 const excludeValue = args.exclude     ?? getEnvConfig("EXCLUDE")
 const buildFlag   = args.build        || getBoolEnv("BUILD")
 const buildNCFlag = args.buildNoCache || getBoolEnv("BUILD_NO_CACHE")
+const pullFlag    = args.pull         || getBoolEnv("PULL")
 
 console.info("── secure-vibe ──────────────────────────────────────────")
 
@@ -27,7 +28,7 @@ const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
 
-await ensureImage(runtime, buildFlag, buildNCFlag)
+await ensureImage(runtime, buildFlag, buildNCFlag, pullFlag)
 
 // Resolve files to exclude — done after ensureImage so pre-flight failures
 // (which call process.exit internally) never leave files displaced.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+- Add `--pull` flag (and `PULL` env var) to force-pull the latest image before starting
+
 ## 1.1.1
 
 - Replace `Bun.spawn` with the Bun shell (`$`) for simple, scripting-like subprocess calls

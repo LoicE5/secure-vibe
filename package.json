@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
+  "version": "1.2.0",
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
@@ -10,6 +10,9 @@
     "build:macos-x64": "bun run scripts/build.ts macos-x64 && bun run cleanup",
     "build:macos-arm64": "bun run scripts/build.ts macos-arm64 && bun run cleanup",
     "cleanup": "rm -f ./.*-*.bun-build",
+    "docker:build": "docker build -f docker/Dockerfile -t docker.io/loice5/secure-vibe:latest .",
+    "docker:build:no-cache": "docker build --no-cache -f docker/Dockerfile -t docker.io/loice5/secure-vibe:latest .",
+    "docker:pull": "docker pull docker.io/loice5/secure-vibe:latest",
     "setup:alias": "bun scripts/alias.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
     "prune:image": "docker rmi docker.io/loice5/secure-vibe:latest"

@@ -22,6 +22,7 @@ bun vibe . --runtime=podman     # force podman
 bun vibe . --command=bash       # open a shell instead of Claude
 bun vibe . --build              # rebuild the image before starting
 bun vibe . --build-no-cache     # rebuild without cache
+bun vibe . --pull               # force-pull the latest image before starting
 bun vibe . --exclude=.env       # hide .env from the container
 bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 ```
@@ -36,6 +37,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `--command=<cmd>` | Command to run inside the container (default: Claude Code). Shell metacharacters supported. |
 | `--build` | Rebuild the image before starting |
 | `--build-no-cache` | Rebuild the image from scratch (no layer cache) |
+| `--pull` | Force-pull the latest image before starting |
 | `--exclude=<patterns>` | Comma-separated glob patterns of files to hide from the container (see [Excluding files](#excluding-files)) |
 
 ## Environment Variables
@@ -50,6 +52,7 @@ All variables accept `"prompt"` as a value to force an interactive prompt even w
 | `COMMAND` | Command to run inside the container |
 | `BUILD` | Force image rebuild: `true`, `1`, or `yes` |
 | `BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
+| `PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
 | `EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
 
 Copy `.env.example` to `.env` and set your defaults:
