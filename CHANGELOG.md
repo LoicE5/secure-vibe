@@ -4,6 +4,7 @@
 
 - Replace `Bun.spawn` with the Bun shell (`$`) for simple, scripting-like subprocess calls
 - Extract inline types into named interfaces for clarity
+- Publish the Docker image automatically after a successful release build (in addition to the weekly schedule and manual run)
 
 ## 1.1.0
 
