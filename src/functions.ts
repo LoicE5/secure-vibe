@@ -1,5 +1,4 @@
 import { access, constants, readFile, rename, mkdir, stat } from "fs/promises"
-import { createInterface } from "readline"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
@@ -82,16 +81,6 @@ export function getBoolEnv(key: string): boolean {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-export function prompt(question: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  return new Promise(resolve => {
-    rl.question(question, answer => {
-      rl.close()
-      resolve(answer.trim())
-    })
-  })
-}
-
 export async function isDirectory(path: string): Promise<boolean> {
   try {
     const stat = await Bun.file(path).stat()
@@ -122,35 +111,18 @@ export function timestamp() {
 // ── Step 1: Directory selection ───────────────────────────────────────────────
 
 export async function selectDirectory(preValue: string | null): Promise<string> {
-  if(preValue !== null) {
-    const targetPath = preValue === "." || preValue === "" ? process.cwd() : resolve(preValue)
-    if(!(await isDirectory(targetPath))) {
-      console.error(`  ✗ Not a valid directory: ${targetPath}`)
-      process.exit(1)
-    }
-    if(isBannedDirectory(targetPath)) {
-      console.error(`  ✗ Mounting "${targetPath}" is not allowed for security reasons.`)
-      process.exit(1)
-    }
-    return targetPath
+  // No prompting: unset/"."/"" means the current directory, otherwise resolve the given path.
+  const targetPath = (preValue === null || preValue === "." || preValue === "") ? process.cwd() : resolve(preValue)
+
+  if(!(await isDirectory(targetPath))) {
+    console.error(`  ✗ Not a valid directory: ${targetPath}`)
+    process.exit(1)
   }
-
-  while(true) {
-    const input = await prompt("Directory to mount (leave blank for current directory): ")
-    const targetPath = input === "" ? process.cwd() : resolve(input)
-
-    if(!(await isDirectory(targetPath))) {
-      console.error(`  ✗ Not a valid directory: ${targetPath}`)
-      continue
-    }
-
-    if(isBannedDirectory(targetPath)) {
-      console.error(`  ✗ Mounting "${targetPath}" is not allowed for security reasons.`)
-      continue
-    }
-
-    return targetPath
+  if(isBannedDirectory(targetPath)) {
+    console.error(`  ✗ Mounting "${targetPath}" is not allowed for security reasons.`)
+    process.exit(1)
   }
+  return targetPath
 }
 
 // ── Step 2: Runtime detection ─────────────────────────────────────────────────
@@ -176,23 +148,18 @@ export async function selectRuntime(preValue: string | null): Promise<Runtime> {
     return "podman"
   }
 
-  // Both available — use preValue if valid
+  // Both available — use preValue if valid, otherwise default to docker.
   if(preValue !== null) {
     const normalized = preValue.toLowerCase()
     if(normalized === "docker" || normalized === "podman") {
       console.info(`  Using ${normalized}.`)
       return normalized as Runtime
     }
-    console.warn(`  ✗ Invalid runtime "${preValue}". Expected: docker, podman. Prompting…`)
+    console.warn(`  ✗ Invalid runtime "${preValue}". Expected: docker, podman. Defaulting to docker.`)
   }
 
-  // Prompt
-  while(true) {
-    const answer = await prompt("Both docker and podman are available. Which one to use? [docker/podman]: ")
-    const normalized = answer.toLowerCase()
-    if(normalized === "docker" || normalized === "podman") return normalized as Runtime
-    console.error('  ✗ Please enter "docker" or "podman".')
-  }
+  console.info("  Both docker and podman available. Using docker (set RUNTIME or --runtime to override).")
+  return "docker"
 }
 
 // ── Step 3: Credential resolution ────────────────────────────────────────────
@@ -446,28 +413,22 @@ export async function runContainer(
 
 // ── Step 6: Save options ──────────────────────────────────────────────────────
 
-export async function selectSaveOption(workDir: string, preValue: string | null): Promise<SaveMode> {
-  if(preValue !== null) {
-    const normalized = preValue.toLowerCase() as SaveMode
-    if(VALID_SAVE_MODES.includes(normalized)) {
-      if(normalized !== "no") console.info(`  Save mode: ${normalized}`)
-      return normalized
-    }
-    console.warn(`  ✗ Invalid save value "${preValue}". Expected: zip, copy, no.`)
+export async function selectSaveOption(preValue: string | null): Promise<SaveMode> {
+  // No prompting: unset defaults to "no". A valid value is honored; anything else
+  // warns and falls back to "no" (the safe, non-destructive default).
+  if(preValue === null) {
+    console.info(`  Tip: pass --save=zip or --save=copy to back up this directory first, in case you need to roll back Claude's changes.`)
+    return "no"
   }
 
-  const parent = dirname(workDir)
-  const name = basename(workDir)
-  console.info(`\nYou can save your current directory if you need to.`)
-  console.info(`  Tip: recommended for projects that do not yet have a remote git repository.`)
-
-  while(true) {
-    const answer = await prompt(`  Save "${name}" to ${parent}/ as [zip/copy/skip]: `)
-    const normalized = answer.toLowerCase()
-    if(normalized === "zip" || normalized === "copy") return normalized as SaveMode
-    if(normalized === "skip" || normalized === "no" || normalized === "") return "no"
-    console.error('  ✗ Please enter "zip", "copy", or "skip".')
+  const normalized = preValue.toLowerCase() as SaveMode
+  if(VALID_SAVE_MODES.includes(normalized)) {
+    if(normalized !== "no") console.info(`  Save mode: ${normalized}`)
+    return normalized
   }
+
+  console.warn(`  ✗ Invalid save value "${preValue}". Expected: zip, copy, no. Skipping save.`)
+  return "no"
 }
 
 export async function runScrolling(args: string[], opts: RunScrollingOptions = {}): Promise<number> {

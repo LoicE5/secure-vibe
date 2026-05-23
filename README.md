@@ -15,7 +15,7 @@ The container comes with a persistent [Homebrew](https://brew.sh) volume (`secur
 ## Run
 
 ```sh
-bun vibe                        # prompts for directory
+bun vibe                        # mount the current directory
 bun vibe /path/to/project       # mount a specific directory
 bun vibe . --save=zip           # zip the directory before starting
 bun vibe . --runtime=podman     # force podman
@@ -42,7 +42,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 
 ## Environment Variables
 
-All variables accept `"prompt"` as a value to force an interactive prompt even when set.
+secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls back to its default: current directory, `save=no`, and `docker` when both runtimes are available.
 
 | Variable | Description |
 |---|---|
@@ -63,7 +63,7 @@ bun run env:init
 
 ## Config resolution
 
-CLI args take priority over environment variables, which take priority over interactive prompts.
+CLI args take priority over environment variables, which take priority over built-in defaults. There are no interactive prompts. When both docker and podman are available and no runtime is specified, docker is used (falling back to podman if docker isn't running); override with `RUNTIME` or `--runtime`.
 
 ## Credentials
 
