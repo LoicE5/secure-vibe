@@ -1,4 +1,5 @@
 import { mkdir, writeFile, access, rm } from "fs/promises"
+import { $ } from "bun"
 
 // ── Seed linuxbrew volume on first run ────────────────────────────────────────
 // The named volume at /home/linuxbrew starts empty; copy from the seed baked
@@ -6,11 +7,7 @@ import { mkdir, writeFile, access, rm } from "fs/promises"
 const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
 if (!brewReady) {
   console.info("  [entrypoint] First run: seeding brew volume from image (this may take a minute)…")
-  const seed = Bun.spawn(["cp", "-a", "/opt/linuxbrew-seed/.", "/home/linuxbrew/"], {
-    stdout: "inherit",
-    stderr: "inherit",
-  })
-  await seed.exited
+  await $`cp -a /opt/linuxbrew-seed/. /home/linuxbrew/`.nothrow()
   console.info("  [entrypoint] Brew volume ready.")
 }
 
@@ -73,12 +70,10 @@ if (credentials) {
 const gitUserName  = process.env.GIT_USER_NAME
 const gitUserEmail = process.env.GIT_USER_EMAIL
 if (gitUserName) {
-  const p = Bun.spawn(["git", "config", "--global", "user.name", gitUserName], { stdout: "pipe", stderr: "pipe" })
-  await p.exited
+  await $`git config --global user.name ${gitUserName}`.quiet().nothrow()
 }
 if (gitUserEmail) {
-  const p = Bun.spawn(["git", "config", "--global", "user.email", gitUserEmail], { stdout: "pipe", stderr: "pipe" })
-  await p.exited
+  await $`git config --global user.email ${gitUserEmail}`.quiet().nothrow()
 }
 
 // Ignore SIGINT at the bun (PID 1) level so ctrl+c inside the container

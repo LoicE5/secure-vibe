@@ -4,7 +4,7 @@ import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
 import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, DOCKERFILE_PATH, IMAGE_CHECK_PATH, IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
-import type { Runtime, SaveMode, ParsedArgs } from "./interfaces"
+import type { Runtime, SaveMode, SaveAction, GitIdentity, RunScrollingOptions, SecretEntry, ParsedArgs } from "./interfaces"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
@@ -103,11 +103,8 @@ export async function commandExists(command: string): Promise<boolean> {
 }
 
 export async function testRuntime(runtime: string): Promise<boolean> {
-  const proc = Bun.spawn([runtime, "info"], {
-    stdout: "pipe",
-    stderr: "pipe"
-  })
-  return await proc.exited === 0
+  const { exitCode } = await $`${runtime} info`.quiet().nothrow()
+  return exitCode === 0
 }
 
 export function isBannedDirectory(absolutePath: string): boolean {
@@ -259,12 +256,11 @@ export async function resolveCredentials(): Promise<string | null> {
 const GIT_FALLBACK_NAME  = "Claude"
 const GIT_FALLBACK_EMAIL = "noreply@anthropic.com"
 
-export async function resolveGitConfig(): Promise<{ name: string; email: string }> {
+export async function resolveGitConfig(): Promise<GitIdentity> {
   async function tryGitConfig(args: string[]): Promise<string | null> {
     try {
-      const proc = Bun.spawn(["git", "config", ...args], { stdout: "pipe", stderr: "pipe" })
-      const [exit, text] = await Promise.all([proc.exited, Bun.readableStreamToText(proc.stdout)])
-      return exit === 0 ? text.trim() || null : null
+      const { exitCode, stdout } = await $`git config ${args}`.quiet().nothrow()
+      return exitCode === 0 ? stdout.toString().trim() || null : null
     } catch {
       return null
     }
@@ -365,8 +361,8 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
     return
   }
 
-  const inspectProcess = Bun.spawnSync([runtime, "image", "inspect", IMAGE_NAME], { stdout: null, stderr: null })
-  const imageFound = inspectProcess.exitCode === 0
+  const { exitCode } = await $`${runtime} image inspect ${IMAGE_NAME}`.quiet().nothrow()
+  const imageFound = exitCode === 0
 
   if(imageFound) {
     await checkForUpdates(runtime)
@@ -393,7 +389,7 @@ export async function runContainer(
   workDir: string,
   credentialsJson: string | null,
   command: string | null = null,
-  gitConfig: { name: string; email: string } | null = null
+  gitConfig: GitIdentity | null = null
 ): Promise<number> {
   const args = [
     runtime, "run", "--rm", "-it",
@@ -459,7 +455,7 @@ export async function selectSaveOption(workDir: string, preValue: string | null)
   }
 }
 
-export async function runScrolling(args: string[], opts: { cwd?: string, windowSize?: number } = {}): Promise<number> {
+export async function runScrolling(args: string[], opts: RunScrollingOptions = {}): Promise<number> {
   const { cwd, windowSize = 5 } = opts
 
   if(!process.stdout.isTTY) {
@@ -523,15 +519,9 @@ export async function resolveExcludedFiles(workDir: string, patterns: string[]):
 }
 
 export async function isGitIgnored(workDir: string, relPath: string): Promise<boolean> {
-  const proc = Bun.spawn(["git", "check-ignore", "-q", relPath], {
-    cwd: workDir,
-    stdout: "pipe",
-    stderr: "pipe"
-  })
-  return await proc.exited === 0
+  const { exitCode } = await $`git check-ignore -q ${relPath}`.cwd(workDir).quiet().nothrow()
+  return exitCode === 0
 }
-
-type SecretEntry = { flatName: string, originalRelPath: string }
 
 export async function moveSecretsOut(workDir: string, relPaths: string[]): Promise<string> {
   const secretsDir = join(dirname(workDir), `${basename(workDir)}-${timestamp()}-secrets`)
@@ -577,7 +567,7 @@ export async function moveSecretsBack(workDir: string, secretsDir: string): Prom
   console.warn(`\x1b[33m  ⚠ Secrets directory was NOT deleted: ${secretsDir}\n  Delete it manually once you have confirmed all files are restored.\x1b[0m`)
 }
 
-export async function saveDirectory(workDir: string, mode: "zip" | "copy"): Promise<void> {
+export async function saveDirectory(workDir: string, mode: SaveAction): Promise<void> {
   const parent = dirname(workDir)
   const name = basename(workDir)
   const dest = mode === "zip"
