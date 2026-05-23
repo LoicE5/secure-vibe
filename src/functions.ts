@@ -62,7 +62,7 @@ export function parseArgs(): ParsedArgs {
     exclude,
     build,
     buildNoCache,
-    pull,
+    pull
   }
 }
 
