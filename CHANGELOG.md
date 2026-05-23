@@ -7,6 +7,7 @@
 - Default save mode to `no`
 - When both docker and podman are available, default to docker (falls back to podman); override with `RUNTIME` or `--runtime`
 - Config is resolved purely from CLI args and env vars; a value of `"prompt"` is treated as unset (uses the default)
+- Show a one-line tip about `--save` when no save option is chosen (suppressed once `--save`/`SAVE` is set)
 
 ## 1.2.0
 

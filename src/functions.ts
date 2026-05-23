@@ -416,7 +416,10 @@ export async function runContainer(
 export async function selectSaveOption(preValue: string | null): Promise<SaveMode> {
   // No prompting: unset defaults to "no". A valid value is honored; anything else
   // warns and falls back to "no" (the safe, non-destructive default).
-  if(preValue === null) return "no"
+  if(preValue === null) {
+    console.info(`  Tip: pass --save=zip or --save=copy to back up this directory first, in case you need to roll back Claude's changes.`)
+    return "no"
+  }
 
   const normalized = preValue.toLowerCase() as SaveMode
   if(VALID_SAVE_MODES.includes(normalized)) {
