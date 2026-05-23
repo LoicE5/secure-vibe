@@ -20,7 +20,7 @@ console.info("── secure-vibe ───────────────�
 const workDir = await selectDirectory(dirValue)
 console.info(`  Mounting: ${workDir}`)
 
-const saveMode = await selectSaveOption(workDir, saveValue)
+const saveMode = await selectSaveOption(saveValue)
 
 const runtime = await selectRuntime(rtValue)
 const credentialsJson = await resolveCredentials()

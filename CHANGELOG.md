@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- Remove all interactive prompts: secure-vibe now starts non-interactively and goes straight into Claude
+- Default to the current directory when no directory is given
+- Default save mode to `no`
+- When both docker and podman are available, default to docker (falls back to podman); override with `RUNTIME` or `--runtime`
+- Config is resolved purely from CLI args and env vars; a value of `"prompt"` is treated as unset (uses the default)
+
 ## 1.2.0
 
 - Add `--pull` flag (and `PULL` env var) to force-pull the latest image before starting
