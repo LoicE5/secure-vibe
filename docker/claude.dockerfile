@@ -70,6 +70,6 @@ RUN printf '%s\n' \
     'fi' \
     >> /home/viber/.bashrc
 
-COPY --chown=viber:viber src/entrypoint.ts /home/viber/entrypoint.ts
+COPY --chown=viber:viber src/entrypoints/claude.ts /home/viber/entrypoint.ts
 
 ENTRYPOINT ["bun", "/home/viber/entrypoint.ts"]
