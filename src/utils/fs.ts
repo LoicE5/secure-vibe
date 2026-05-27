@@ -1,9 +1,13 @@
+import { access, stat } from "fs/promises"
 import { BANNED_DIRS } from "../constants"
 
-/** Returns true if `path` resolves to a directory. Swallows fs errors. */
+/** Returns true if `path` resolves to a directory. Missing paths return false silently; other stat errors are logged at debug. */
 export async function isDirectory(path: string): Promise<boolean> {
+  // Bun.file(path).exists() reports false for directories in some Bun versions, so use fs.access.
+  const accessible = await access(path).then(() => true).catch(() => false)
+  if(!accessible) return false
   try {
-    const fileStat = await Bun.file(path).stat()
+    const fileStat = await stat(path)
     return fileStat.isDirectory()
   } catch(statError: unknown) {
     console.debug(`  [fs] stat failed for ${path}:`, statError)

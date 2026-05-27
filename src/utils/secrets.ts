@@ -1,4 +1,4 @@
-import { readFile, rename, mkdir, stat } from "fs/promises"
+import { readFile, rename, mkdir, stat, access } from "fs/promises"
 import { dirname, basename, join } from "path"
 import { $ } from "bun"
 import type { SecretEntry } from "../types"
@@ -20,13 +20,19 @@ export async function resolveExcludedFiles(workDir: string, patterns: string[]):
     for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true, dot: true })) {
       seen.add(relPath)
     }
-    // Bare names (no wildcards or path separators) may be directories — move them as a unit
+    // Bare names (no wildcards or path separators) may be directories — move them as a unit.
+    // Guard with access() so a missing pattern is a silent no-op (the glob.scan above already
+    // covered the file case); stat-level failures get a debug log.
     if(!pattern.includes("*") && !pattern.includes("/")) {
-      try {
-        const entryStat = await stat(join(workDir, pattern))
-        if(entryStat.isDirectory()) seen.add(pattern)
-      } catch(statError: unknown) {
-        console.debug(`  [secrets] stat skipped for ${pattern}:`, statError)
+      const targetPath = join(workDir, pattern)
+      const targetExists = await access(targetPath).then(() => true).catch(() => false)
+      if(targetExists) {
+        try {
+          const entryStat = await stat(targetPath)
+          if(entryStat.isDirectory()) seen.add(pattern)
+        } catch(statError: unknown) {
+          console.debug(`  [secrets] stat skipped for ${pattern}:`, statError)
+        }
       }
     }
   }
