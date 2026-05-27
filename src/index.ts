@@ -5,7 +5,8 @@ import { selectRuntime } from "./utils/select-runtime"
 import { resolveGitConfig } from "./utils/git-identity"
 import { saveDirectory } from "./utils/save-directory"
 import { parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./utils/secrets"
-import { resolveCredentials, ensureImage, runContainer } from "./functions"
+import { resolveClaudeCredentials } from "./providers/claude/credentials"
+import { ensureImage, runContainer } from "./functions"
 import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ console.info(`  Mounting: ${workDir}`)
 const saveMode = await selectSaveOption(saveValue)
 
 const runtime = await selectRuntime(rtValue)
-const credentialsJson = await resolveCredentials()
+const credentialsJson = await resolveClaudeCredentials()
 const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
