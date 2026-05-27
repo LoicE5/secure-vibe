@@ -2,7 +2,7 @@ import { access, constants, readFile, rename, mkdir, stat } from "fs/promises"
 import { userInfo } from "os"
 import { resolve, join, dirname, basename } from "path"
 import { $ } from "bun"
-import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, DOCKERFILE_PATH, IMAGE_CHECK_PATH, IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
+import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, CLAUDE_DOCKERFILE_PATH, CLAUDE_IMAGE_CHECK_PATH, CLAUDE_IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
 import type { Runtime, SaveMode, SaveAction, GitIdentity, RunScrollingOptions, SecretEntry, ParsedArgs } from "./types"
 
 // ── Args ──────────────────────────────────────────────────────────────────────
@@ -263,10 +263,10 @@ async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
 
   const buildArgs = [
     runtime, "build",
-    "-f", DOCKERFILE_PATH,
+    "-f", CLAUDE_DOCKERFILE_PATH,
     "--build-arg", `UID=${uid}`,
     "--build-arg", `GID=${gid}`,
-    "-t", IMAGE_NAME,
+    "-t", CLAUDE_IMAGE_NAME,
   ]
   if(noCache) buildArgs.push("--no-cache")
   buildArgs.push(PROJECT_DIR)
@@ -279,18 +279,18 @@ async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
     process.exit(buildExit ?? 1)
   }
 
-  console.info(`  Image "${IMAGE_NAME}" built successfully.`)
+  console.info(`  Image "${CLAUDE_IMAGE_NAME}" built successfully.`)
 }
 
 async function pullImage(runtime: Runtime): Promise<boolean> {
-  const pullProcess = Bun.spawn([runtime, "pull", IMAGE_NAME], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+  const pullProcess = Bun.spawn([runtime, "pull", CLAUDE_IMAGE_NAME], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
   const pullExit = await pullProcess.exited
   return pullExit === 0
 }
 
 async function checkForUpdates(runtime: Runtime): Promise<void> {
   const today = new Date().toISOString().slice(0, 10)
-  const cacheFile = Bun.file(IMAGE_CHECK_PATH)
+  const cacheFile = Bun.file(CLAUDE_IMAGE_CHECK_PATH)
 
   if(await cacheFile.exists()) {
     const lastCheck = (await cacheFile.text()).trim()
@@ -301,50 +301,50 @@ async function checkForUpdates(runtime: Runtime): Promise<void> {
   }
 
   console.info(`  Checking for image updates…`)
-  const idBefore = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+  const idBefore = (await $`${runtime} images ${CLAUDE_IMAGE_NAME} -q`.text()).trim()
   const pulled = await pullImage(runtime)
 
   if(!pulled) {
     console.warn(`  Could not reach registry to check for updates. Will retry tomorrow.`)
-    await mkdir(dirname(IMAGE_CHECK_PATH), { recursive: true })
-    await Bun.write(IMAGE_CHECK_PATH, today)
+    await mkdir(dirname(CLAUDE_IMAGE_CHECK_PATH), { recursive: true })
+    await Bun.write(CLAUDE_IMAGE_CHECK_PATH, today)
     return
   }
 
-  const idAfter = (await $`${runtime} images ${IMAGE_NAME} -q`.text()).trim()
+  const idAfter = (await $`${runtime} images ${CLAUDE_IMAGE_NAME} -q`.text()).trim()
   if(idBefore !== idAfter) {
     console.info(`  Image updated.`)
   } else {
     console.info(`  Image is already up to date.`)
   }
 
-  await mkdir(dirname(IMAGE_CHECK_PATH), { recursive: true })
-  await Bun.write(IMAGE_CHECK_PATH, today)
+  await mkdir(dirname(CLAUDE_IMAGE_CHECK_PATH), { recursive: true })
+  await Bun.write(CLAUDE_IMAGE_CHECK_PATH, today)
 }
 
 export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false, pull = false): Promise<void> {
   if(build || buildNoCache) {
-    if(!(await Bun.file(DOCKERFILE_PATH).exists())) {
-      console.error(`✗ --build is only available when running from the project source directory. Dockerfile not found at: ${DOCKERFILE_PATH}`)
+    if(!(await Bun.file(CLAUDE_DOCKERFILE_PATH).exists())) {
+      console.error(`✗ --build is only available when running from the project source directory. Dockerfile not found at: ${CLAUDE_DOCKERFILE_PATH}`)
       process.exit(1)
     }
-    console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${IMAGE_NAME}"…`)
+    console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${CLAUDE_IMAGE_NAME}"…`)
     await buildImage(runtime, buildNoCache)
     return
   }
 
   if(pull) {
-    console.info(`  Pulling latest image "${IMAGE_NAME}"…`)
+    console.info(`  Pulling latest image "${CLAUDE_IMAGE_NAME}"…`)
     const pulled = await pullImage(runtime)
     if(!pulled) {
       console.error(`✗ Image pull failed.`)
       process.exit(1)
     }
-    console.info(`  Image "${IMAGE_NAME}" is up to date.`)
+    console.info(`  Image "${CLAUDE_IMAGE_NAME}" is up to date.`)
     return
   }
 
-  const { exitCode } = await $`${runtime} image inspect ${IMAGE_NAME}`.quiet().nothrow()
+  const { exitCode } = await $`${runtime} image inspect ${CLAUDE_IMAGE_NAME}`.quiet().nothrow()
   const imageFound = exitCode === 0
 
   if(imageFound) {
@@ -352,13 +352,13 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
     return
   }
 
-  console.info(`  Image not found locally. Pulling "${IMAGE_NAME}"…`)
+  console.info(`  Image not found locally. Pulling "${CLAUDE_IMAGE_NAME}"…`)
   const pulled = await pullImage(runtime)
   if(pulled) return
 
   console.info(`  Pull failed. Building from Dockerfile…`)
-  if(!(await Bun.file(DOCKERFILE_PATH).exists())) {
-    console.error(`✗ No Dockerfile found at ${DOCKERFILE_PATH} and pull failed. Cannot start.`)
+  if(!(await Bun.file(CLAUDE_DOCKERFILE_PATH).exists())) {
+    console.error(`✗ No Dockerfile found at ${CLAUDE_DOCKERFILE_PATH} and pull failed. Cannot start.`)
     process.exit(1)
   }
 
@@ -397,7 +397,7 @@ export async function runContainer(
     args.push("-e", `GIT_USER_EMAIL=${gitConfig.email}`)
   }
 
-  args.push(IMAGE_NAME)
+  args.push(CLAUDE_IMAGE_NAME)
 
   if(command !== null) {
     // Wrap in bash -c if the command contains shell metacharacters or spaces
