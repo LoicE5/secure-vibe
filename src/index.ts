@@ -6,7 +6,9 @@ import { resolveGitConfig } from "./utils/git-identity"
 import { saveDirectory } from "./utils/save-directory"
 import { parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./utils/secrets"
 import { resolveClaudeCredentials } from "./providers/claude/credentials"
-import { ensureImage, runContainer } from "./functions"
+import { CLAUDE_PROVIDER_SPEC } from "./providers/claude/spec"
+import { ensureImage } from "./utils/image"
+import { runContainer } from "./functions"
 import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
 
-await ensureImage(runtime, buildFlag, buildNCFlag, pullFlag)
+await ensureImage(runtime, CLAUDE_PROVIDER_SPEC, buildFlag, buildNCFlag, pullFlag)
 
 // Resolve files to exclude — done after ensureImage so pre-flight failures
 // (which call process.exit internally) never leave files displaced.
