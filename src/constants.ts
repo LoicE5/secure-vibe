@@ -1,6 +1,6 @@
 import { homedir } from "os"
 import { join } from "path"
-import type { SaveMode } from "./interfaces"
+import type { SaveMode } from "./types"
 
 export const CLAUDE_DIR = join(homedir(), ".claude")
 export const CLAUDE_JSON_PATH = join(homedir(), ".claude.json")
