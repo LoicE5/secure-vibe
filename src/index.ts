@@ -5,10 +5,9 @@ import { selectRuntime } from "./utils/select-runtime"
 import { resolveGitConfig } from "./utils/git-identity"
 import { saveDirectory } from "./utils/save-directory"
 import { parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./utils/secrets"
-import { resolveClaudeCredentials } from "./providers/claude/credentials"
 import { CLAUDE_PROVIDER_SPEC } from "./providers/claude/spec"
+import { runClaudeContainer } from "./providers/claude/run-claude-container"
 import { ensureImage } from "./utils/image"
-import { runContainer } from "./functions"
 import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -33,7 +32,6 @@ console.info(`  Mounting: ${workDir}`)
 const saveMode = await selectSaveOption(saveValue)
 
 const runtime = await selectRuntime(rtValue)
-const credentialsJson = await resolveClaudeCredentials()
 const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
@@ -55,7 +53,7 @@ try {
     secretsDir = await moveSecretsOut(workDir, excludedFiles)
     console.info(`  Secrets moved: ${excludedFiles.length} file(s) → ${secretsDir}`)
   }
-  exitCode = await runContainer(runtime, workDir, credentialsJson, cmdValue, gitConfig)
+  exitCode = await runClaudeContainer({ runtime, workDir, command: cmdValue, gitConfig })
 } finally {
   if(secretsDir) await moveSecretsBack(workDir, secretsDir)
 }
