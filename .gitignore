@@ -5,3 +5,5 @@ TODO.md
 dist/
 .*-*.bun-build
 personal/
+PROMPT.md
+.DS_Store
