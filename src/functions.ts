@@ -1,172 +1,24 @@
-import { access, constants, readFile, rename, mkdir, stat } from "fs/promises"
+import { access, constants, readFile, mkdir } from "fs/promises"
 import { userInfo } from "os"
-import { resolve, join, dirname, basename } from "path"
+import { dirname, join } from "path"
 import { $ } from "bun"
-import { BANNED_DIRS, CLAUDE_DIR, CLAUDE_JSON_PATH, CLAUDE_DOCKERFILE_PATH, CLAUDE_IMAGE_CHECK_PATH, CLAUDE_IMAGE_NAME, PROJECT_DIR, VALID_SAVE_MODES } from "./constants"
-import type { Runtime, SaveMode, SaveAction, GitIdentity, RunScrollingOptions, SecretEntry, ParsedArgs } from "./types"
-
-// ── Args ──────────────────────────────────────────────────────────────────────
-
-export function parseArgs(): ParsedArgs {
-  const argv = process.argv.slice(2)
-  const positionals: string[] = []
-  let save: string | null = null
-  let runtime: string | null = null
-  let command: string | null = null
-  let exclude: string | null = null
-  let build = false
-  let buildNoCache = false
-  let pull = false
-
-  const consumed = new Set<number>()
-  for(const [index, arg] of argv.entries()) {
-    if(consumed.has(index)) continue
-    if(arg === "--build-no-cache") {
-      buildNoCache = true
-    } else if(arg === "--build") {
-      build = true
-    } else if(arg === "--pull") {
-      pull = true
-    } else if(arg.startsWith("--runtime=")) {
-      runtime = arg.slice("--runtime=".length)
-    } else if(arg === "--runtime" && index + 1 < argv.length) {
-      runtime = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(arg.startsWith("--save=")) {
-      save = arg.slice("--save=".length)
-    } else if(arg === "--save" && index + 1 < argv.length) {
-      save = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(arg.startsWith("--command=")) {
-      command = arg.slice("--command=".length)
-    } else if(arg === "--command" && index + 1 < argv.length) {
-      command = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(arg.startsWith("--exclude=")) {
-      exclude = arg.slice("--exclude=".length)
-    } else if(arg === "--exclude" && index + 1 < argv.length) {
-      exclude = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(!arg.startsWith("-")) {
-      positionals.push(arg)
-    }
-    // Unknown flags are ignored
-  }
-
-  return {
-    directory: positionals.at(0) ?? null,
-    save,
-    runtime,
-    command: command ?? (positionals.slice(1).join(" ") || null),
-    exclude,
-    build,
-    buildNoCache,
-    pull,
-    provider: null
-  }
-}
-
-// ── Env helpers ───────────────────────────────────────────────────────────────
-
-// Returns null if the env var is unset or explicitly set to "prompt".
-export function getEnvConfig(key: string): string | null {
-  const val = process.env[key]
-  if(!val || val.toLowerCase() === "prompt") return null
-  return val
-}
-
-// Returns true if the env var is set to "true", "1", or "yes" (case-insensitive).
-export function getBoolEnv(key: string): boolean {
-  return ["true", "1", "yes"].includes(process.env[key]?.toLowerCase() ?? "")
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-export async function isDirectory(path: string): Promise<boolean> {
-  try {
-    const stat = await Bun.file(path).stat()
-    return stat.isDirectory()
-  } catch {
-    return false
-  }
-}
-
-
-export async function commandExists(command: string): Promise<boolean> {
-  return Bun.which(command) !== null
-}
-
-export async function testRuntime(runtime: string): Promise<boolean> {
-  const { exitCode } = await $`${runtime} info`.quiet().nothrow()
-  return exitCode === 0
-}
-
-export function isBannedDirectory(absolutePath: string): boolean {
-  return BANNED_DIRS.has(absolutePath)
-}
-
-export function timestamp() {
-  return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)
-}
-
-// ── Step 1: Directory selection ───────────────────────────────────────────────
-
-export async function selectDirectory(preValue: string | null): Promise<string> {
-  // No prompting: unset/"."/"" means the current directory, otherwise resolve the given path.
-  const targetPath = (preValue === null || preValue === "." || preValue === "") ? process.cwd() : resolve(preValue)
-
-  if(!(await isDirectory(targetPath))) {
-    console.error(`  ✗ Not a valid directory: ${targetPath}`)
-    process.exit(1)
-  }
-  if(isBannedDirectory(targetPath)) {
-    console.error(`  ✗ Mounting "${targetPath}" is not allowed for security reasons.`)
-    process.exit(1)
-  }
-  return targetPath
-}
-
-// ── Step 2: Runtime detection ─────────────────────────────────────────────────
-
-export async function selectRuntime(preValue: string | null): Promise<Runtime> {
-  const dockerAvailable = (await commandExists("docker")) && (await testRuntime("docker"))
-  const podmanAvailable = (await commandExists("podman")) && (await testRuntime("podman"))
-
-  if(!dockerAvailable && !podmanAvailable) {
-    console.error("✗ Neither docker nor podman is available or running. Please start one and try again.")
-    process.exit(1)
-  }
-
-  if(dockerAvailable && !podmanAvailable) {
-    if(preValue && preValue !== "docker") console.warn(`  ⚠ Runtime "${preValue}" not available, using docker.`)
-    console.info("  Using docker.")
-    return "docker"
-  }
-
-  if(podmanAvailable && !dockerAvailable) {
-    if(preValue && preValue !== "podman") console.warn(`  ⚠ Runtime "${preValue}" not available, using podman.`)
-    console.info("  Using podman.")
-    return "podman"
-  }
-
-  // Both available — use preValue if valid, otherwise default to docker.
-  if(preValue !== null) {
-    const normalized = preValue.toLowerCase()
-    if(normalized === "docker" || normalized === "podman") {
-      console.info(`  Using ${normalized}.`)
-      return normalized as Runtime
-    }
-    console.warn(`  ✗ Invalid runtime "${preValue}". Expected: docker, podman. Defaulting to docker.`)
-  }
-
-  console.info("  Both docker and podman available. Using docker (set RUNTIME or --runtime to override).")
-  return "docker"
-}
+import {
+  CLAUDE_DIR,
+  CLAUDE_JSON_PATH,
+  CLAUDE_DOCKERFILE_PATH,
+  CLAUDE_IMAGE_CHECK_PATH,
+  CLAUDE_IMAGE_NAME,
+  PROJECT_DIR
+} from "./constants"
+import type { Runtime, GitIdentity } from "./types"
 
 // ── Step 3: Credential resolution ────────────────────────────────────────────
 
-// Reads ~/.claude.json and extracts the auth fields Claude needs.
-// Claude 2.1.63+ stores credentials there (not in ~/.claude/.credentials.json).
+/**
+ * Reads ~/.claude.json and returns its raw contents if it contains a claudeAiOauth field.
+ * Returns null when the file is missing, unreadable, or doesn't carry auth tokens.
+ * Claude 2.1.63+ stores credentials there (not in ~/.claude/.credentials.json).
+ */
 export async function readClaudeJson(): Promise<string | null> {
   const exists = await access(CLAUDE_JSON_PATH, constants.R_OK).then(() => true).catch(() => false)
   if(!exists) return null
@@ -182,8 +34,11 @@ export async function readClaudeJson(): Promise<string | null> {
   }
 }
 
-// Returns the credentials JSON string to inject into the container via env var,
-// or null if credentials are already present in the mounted .claude-host dir.
+/**
+ * Returns the credentials JSON string to inject into the container via env var.
+ * Cascade: ~/.claude.json → macOS keychain (darwin) → legacy ~/.claude/.credentials.json.
+ * Exits the process (code 1) when no credential source is reachable.
+ */
 export async function resolveCredentials(): Promise<string | null> {
   // Primary: read from ~/.claude.json (Claude 2.1.63+, works on all platforms)
   const fromFile = await readClaudeJson()
@@ -223,41 +78,9 @@ export async function resolveCredentials(): Promise<string | null> {
   process.exit(1)
 }
 
-// ── Step 3b: Git identity resolution ─────────────────────────────────────────
-
-const GIT_FALLBACK_NAME  = "Claude"
-const GIT_FALLBACK_EMAIL = "noreply@anthropic.com"
-
-export async function resolveGitConfig(): Promise<GitIdentity> {
-  async function tryGitConfig(args: string[]): Promise<string | null> {
-    try {
-      const { exitCode, stdout } = await $`git config ${args}`.quiet().nothrow()
-      return exitCode === 0 ? stdout.toString().trim() || null : null
-    } catch {
-      return null
-    }
-  }
-
-  // git config (no flag) reads local → global → system automatically.
-  // Fall back to --global explicitly in case the cwd is not a repo.
-  const name  = (await tryGitConfig(["user.name"]))  ?? (await tryGitConfig(["--global", "user.name"]))
-  const email = (await tryGitConfig(["user.email"])) ?? (await tryGitConfig(["--global", "user.email"]))
-
-  const resolvedName  = name  ?? GIT_FALLBACK_NAME
-  const resolvedEmail = email ?? GIT_FALLBACK_EMAIL
-
-  if (name && email) {
-    console.info(`\x1b[32m  Git identity forwarded from host: ${name} <${email}>\x1b[0m`)
-  } else {
-    const missing = [!name && "user.name", !email && "user.email"].filter(Boolean).join(", ")
-    console.error(`\x1b[31m  ✗ git ${missing} not found on host — falling back to: ${resolvedName} <${resolvedEmail}>\x1b[0m`)
-  }
-
-  return { name: resolvedName, email: resolvedEmail }
-}
-
 // ── Step 4: Image check + build ───────────────────────────────────────────────
 
+/** Builds the Claude image from CLAUDE_DOCKERFILE_PATH with the host user's UID/GID. */
 async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
   const { uid, gid } = userInfo()
 
@@ -266,7 +89,7 @@ async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
     "-f", CLAUDE_DOCKERFILE_PATH,
     "--build-arg", `UID=${uid}`,
     "--build-arg", `GID=${gid}`,
-    "-t", CLAUDE_IMAGE_NAME,
+    "-t", CLAUDE_IMAGE_NAME
   ]
   if(noCache) buildArgs.push("--no-cache")
   buildArgs.push(PROJECT_DIR)
@@ -282,12 +105,14 @@ async function buildImage(runtime: Runtime, noCache: boolean): Promise<void> {
   console.info(`  Image "${CLAUDE_IMAGE_NAME}" built successfully.`)
 }
 
+/** Pulls the latest CLAUDE_IMAGE_NAME from its registry. Returns true on success. */
 async function pullImage(runtime: Runtime): Promise<boolean> {
   const pullProcess = Bun.spawn([runtime, "pull", CLAUDE_IMAGE_NAME], { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
   const pullExit = await pullProcess.exited
   return pullExit === 0
 }
 
+/** Once a day, attempts to pull and reports whether the image changed. Best-effort. */
 async function checkForUpdates(runtime: Runtime): Promise<void> {
   const today = new Date().toISOString().slice(0, 10)
   const cacheFile = Bun.file(CLAUDE_IMAGE_CHECK_PATH)
@@ -322,6 +147,7 @@ async function checkForUpdates(runtime: Runtime): Promise<void> {
   await Bun.write(CLAUDE_IMAGE_CHECK_PATH, today)
 }
 
+/** Ensures the Claude image is available locally — respects --build / --build-no-cache / --pull flags. */
 export async function ensureImage(runtime: Runtime, build = false, buildNoCache = false, pull = false): Promise<void> {
   if(build || buildNoCache) {
     if(!(await Bun.file(CLAUDE_DOCKERFILE_PATH).exists())) {
@@ -367,6 +193,11 @@ export async function ensureImage(runtime: Runtime, build = false, buildNoCache 
 
 // ── Step 5: Run container ─────────────────────────────────────────────────────
 
+/**
+ * Runs the Claude container: mounts the workdir + a read-only ~/.claude, injects
+ * CLAUDE_CREDENTIALS and the host git identity, and spawns the runtime command.
+ * Returns the container's exit code.
+ */
 export async function runContainer(
   runtime: Runtime,
   workDir: string,
@@ -410,160 +241,4 @@ export async function runContainer(
 
   const containerProcess = Bun.spawn(args, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
   return await containerProcess.exited ?? 0
-}
-
-// ── Step 6: Save options ──────────────────────────────────────────────────────
-
-export async function selectSaveOption(preValue: string | null): Promise<SaveMode> {
-  // No prompting: unset defaults to "no". A valid value is honored; anything else
-  // warns and falls back to "no" (the safe, non-destructive default).
-  if(preValue === null) {
-    console.info(`  Tip: pass --save=zip or --save=copy to back up this directory first, in case you need to roll back Claude's changes.`)
-    return "no"
-  }
-
-  const normalized = preValue.toLowerCase() as SaveMode
-  if(VALID_SAVE_MODES.includes(normalized)) {
-    if(normalized !== "no") console.info(`  Save mode: ${normalized}`)
-    return normalized
-  }
-
-  console.warn(`  ✗ Invalid save value "${preValue}". Expected: zip, copy, no. Skipping save.`)
-  return "no"
-}
-
-export async function runScrolling(args: string[], opts: RunScrollingOptions = {}): Promise<number> {
-  const { cwd, windowSize = 5 } = opts
-
-  if(!process.stdout.isTTY) {
-    const proc = Bun.spawn(args, { cwd, stdout: "inherit", stderr: "inherit" })
-    return proc.exited
-  }
-
-  const proc = Bun.spawn(args, { cwd, stdout: "pipe", stderr: "pipe" })
-  const buffer: string[] = []
-  let linesWritten = 0
-  const cols = process.stdout.columns ?? 80
-
-  function emit(line: string) {
-    const trimmed = line.trimEnd().slice(0, cols - 2)
-    if(!trimmed) return
-    buffer.push(trimmed)
-    if(buffer.length > windowSize) buffer.shift()
-    if(linesWritten > 0) process.stdout.write(`\x1b[${linesWritten}A`)
-    process.stdout.write(buffer.map(l => `\x1b[2K  ${l}`).join("\n") + "\n")
-    linesWritten = buffer.length
-  }
-
-  async function consume(stream: ReadableStream<Uint8Array>) {
-    const decoder = new TextDecoder()
-    let partial = ""
-    for await(const chunk of stream) {
-      const text = partial + decoder.decode(chunk, { stream: true })
-      const parts = text.split(/[\n\r]/)
-      partial = parts.pop() ?? ""
-      for(const part of parts) emit(part)
-    }
-    if(partial) emit(partial)
-  }
-
-  await Promise.all([consume(proc.stdout), consume(proc.stderr)])
-  return proc.exited
-}
-
-// ── Exclude / secrets ─────────────────────────────────────────────────────────
-
-export function parseExcludePatterns(raw: string): string[] {
-  return raw.split(",").map(pattern => pattern.trim()).filter(pattern => pattern.length > 0)
-}
-
-export async function resolveExcludedFiles(workDir: string, patterns: string[]): Promise<string[]> {
-  const seen = new Set<string>()
-  for(const pattern of patterns) {
-    const glob = new Bun.Glob(pattern)
-    for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true, dot: true })) {
-      seen.add(relPath)
-    }
-    // Bare names (no wildcards or path separators) may be directories — move them as a unit
-    if(!pattern.includes("*") && !pattern.includes("/")) {
-      try {
-        const s = await stat(join(workDir, pattern))
-        if(s.isDirectory()) seen.add(pattern)
-      } catch {}
-    }
-  }
-  return [...seen].sort()
-}
-
-export async function isGitIgnored(workDir: string, relPath: string): Promise<boolean> {
-  const { exitCode } = await $`git check-ignore -q ${relPath}`.cwd(workDir).quiet().nothrow()
-  return exitCode === 0
-}
-
-export async function moveSecretsOut(workDir: string, relPaths: string[]): Promise<string> {
-  const secretsDir = join(dirname(workDir), `${basename(workDir)}-${timestamp()}-secrets`)
-  await mkdir(secretsDir, { recursive: true })
-
-  const manifest: SecretEntry[] = []
-
-  for(const relPath of relPaths) {
-    const ignored = await isGitIgnored(workDir, relPath)
-    if(!ignored) {
-      console.warn(`\x1b[33m  ⚠ ${relPath} is not gitignored — moving it will affect git status\x1b[0m`)
-    }
-
-    const flatName = relPath.replaceAll("/", "__")
-    await rename(join(workDir, relPath), join(secretsDir, flatName))
-    manifest.push({ flatName, originalRelPath: relPath })
-  }
-
-  await Bun.write(join(secretsDir, "manifest.json"), JSON.stringify(manifest, null, 2))
-  return secretsDir
-}
-
-export async function moveSecretsBack(workDir: string, secretsDir: string): Promise<void> {
-  let manifest: SecretEntry[]
-  try {
-    manifest = JSON.parse(await readFile(join(secretsDir, "manifest.json"), "utf-8")) as SecretEntry[]
-  } catch(error: unknown) {
-    console.error("  ✗ Could not read secrets manifest — files were NOT restored:", error)
-    return
-  }
-
-  for(const { flatName, originalRelPath } of manifest) {
-    try {
-      const destination = join(workDir, originalRelPath)
-      await mkdir(dirname(destination), { recursive: true })
-      await rename(join(secretsDir, flatName), destination)
-      console.info(`  Restored: ${originalRelPath}`)
-    } catch(error: unknown) {
-      console.error(`  ✗ Failed to restore ${originalRelPath}:`, error)
-    }
-  }
-
-  console.warn(`\x1b[33m  ⚠ Secrets directory was NOT deleted: ${secretsDir}\n  Delete it manually once you have confirmed all files are restored.\x1b[0m`)
-}
-
-export async function saveDirectory(workDir: string, mode: SaveAction): Promise<void> {
-  const parent = dirname(workDir)
-  const name = basename(workDir)
-  const dest = mode === "zip"
-    ? join(parent, `${name}-${timestamp()}.zip`)
-    : join(parent, `${name}-${timestamp()}`)
-
-  try {
-    if(mode === "zip") {
-      console.info(`  Zipping "${name}" to ${dest} ...`)
-      const code = await runScrolling(["zip", "-r", dest, "."], { cwd: workDir })
-      if(code !== 0) { return console.error(`  ✗ zip failed (exit ${code}).`) }
-    } else {
-      console.info(`  Copying "${name}" to ${dest} ...`)
-      const code = await runScrolling(["rsync", "-avh", "--progress", workDir, dest])
-      if(code !== 0) { return console.error(`  ✗ rsync failed (exit ${code}).`) }
-    }
-
-    console.info(`  Saved to: ${dest}`)
-  } catch(saveError: unknown) {
-    console.error("  ✗ Save failed:", saveError)
-  }
 }

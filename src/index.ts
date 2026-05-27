@@ -1,4 +1,11 @@
-import { parseArgs, getEnvConfig, getBoolEnv, selectDirectory, selectSaveOption, selectRuntime, resolveCredentials, resolveGitConfig, ensureImage, runContainer, saveDirectory, parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./functions"
+import { parseArgs, getEnvConfig, getBoolEnv } from "./utils/args"
+import { selectDirectory } from "./utils/select-directory"
+import { selectSaveOption } from "./utils/select-save"
+import { selectRuntime } from "./utils/select-runtime"
+import { resolveGitConfig } from "./utils/git-identity"
+import { saveDirectory } from "./utils/save-directory"
+import { parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./utils/secrets"
+import { resolveCredentials, ensureImage, runContainer } from "./functions"
 import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Main ──────────────────────────────────────────────────────────────────────
