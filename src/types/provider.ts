@@ -1,8 +1,8 @@
 import type { Runtime } from "./runtime"
 import type { GitIdentity } from "./git"
 
-/** Identifier of a supported CLI provider. New providers extend the union. */
-export type ProviderId = "claude"
+/** Identifier of a CLI provider. Only "claude" has a runner today; the rest are reserved. */
+export type ProviderId = "claude" | "codex" | "mistral" | "ccr"
 
 /** Static metadata describing a provider — fed to the generic container/image helpers. */
 export interface ProviderSpec {

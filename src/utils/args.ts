@@ -2,7 +2,12 @@ import type { ParsedArgs, ProviderId } from "../types"
 
 /** Maps each provider-selection flag (and its aliases) to a ProviderId. */
 const PROVIDER_FLAGS: Record<string, ProviderId> = {
-  "--claude": "claude"
+  "--claude": "claude",
+  "--codex": "codex",
+  "--chatgpt": "codex",
+  "--gpt": "codex",
+  "--mistral": "mistral",
+  "--ccr": "ccr"
 }
 
 /**
