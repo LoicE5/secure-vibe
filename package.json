@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "3.0.0",
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
@@ -10,12 +10,12 @@
     "build:macos-x64": "bun run scripts/build.ts macos-x64 && bun run cleanup",
     "build:macos-arm64": "bun run scripts/build.ts macos-arm64 && bun run cleanup",
     "cleanup": "rm -f ./.*-*.bun-build",
-    "docker:build:claude": "docker build -f docker/claude.dockerfile -t docker.io/loice5/secure-vibe-claude:latest .",
-    "docker:build:claude:no-cache": "docker build --no-cache -f docker/claude.dockerfile -t docker.io/loice5/secure-vibe-claude:latest .",
-    "docker:pull:claude": "docker pull docker.io/loice5/secure-vibe-claude:latest",
+    "docker:build:claude": "docker build -f docker/claude.dockerfile -t ghcr.io/loice5/secure-vibe/claude:latest .",
+    "docker:build:claude:no-cache": "docker build --no-cache -f docker/claude.dockerfile -t ghcr.io/loice5/secure-vibe/claude:latest .",
+    "docker:pull:claude": "docker pull ghcr.io/loice5/secure-vibe/claude:latest",
     "setup:alias": "bun scripts/alias.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
-    "prune:image:claude": "docker rmi docker.io/loice5/secure-vibe-claude:latest"
+    "prune:image:claude": "docker rmi ghcr.io/loice5/secure-vibe/claude:latest"
   },
   "devDependencies": {
     "@types/bun": "latest"

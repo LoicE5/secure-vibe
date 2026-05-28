@@ -7,8 +7,8 @@ export const CLAUDE_DIR = join(homedir(), ".claude")
 /** Path to ~/.claude.json — Claude 2.1.63+ stores credentials here. */
 export const CLAUDE_JSON_PATH = join(homedir(), ".claude.json")
 
-/** Docker image reference for the Claude provider. Hyphenated to remain Docker Hub compatible. */
-export const CLAUDE_IMAGE_NAME = "docker.io/loice5/secure-vibe-claude:latest"
+/** Container image for the Claude provider, published to GitHub Container Registry (GHCR allows nested paths, unlike Docker Hub). */
+export const CLAUDE_IMAGE_NAME = "ghcr.io/loice5/secure-vibe/claude:latest"
 
 /** Per-provider cache file recording the last day the image was pulled for updates. */
 export const CLAUDE_IMAGE_CHECK_PATH = join(homedir(), ".cache", "secure-vibe", "image-check-claude")
