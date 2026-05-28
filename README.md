@@ -85,7 +85,7 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 | `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
 | `bun run build:x64` | Compile for macOS x64 (Intel) |
 | `bun run prune:brew` | Delete the persistent Homebrew volume |
-| `bun run prune:image` | Remove the built Docker image |
+| `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 
 ## Excluding files
 

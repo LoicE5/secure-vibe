@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0
+
+- Restructure into a pluggable multi-provider architecture (per-provider modules, entrypoints, and Dockerfiles); Claude Code remains the default. Existing flags and env vars are unchanged
+- Add provider selection flags: `--claude` (default)
+- Distribute the Claude container image via GitHub Container Registry (`ghcr.io/loice5/secure-vibe/claude`) instead of Docker Hub
+- Publish multi-arch (linux/amd64, linux/arm64) images automatically on release and weekly; publishing restructured around a per-provider matrix to support future providers
+
 ## 2.0.0
 
 - **Breaking:** Remove all interactive prompts: secure-vibe now starts non-interactively and goes straight into Claude
