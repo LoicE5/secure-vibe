@@ -57,6 +57,9 @@ ENV PATH="/home/viber/bin:/home/viber/.local/bin:${PATH}"
 COPY --chown=viber:viber src/assets/claude-wrapper.sh /home/viber/bin/claude
 RUN chmod +x /home/viber/bin/claude
 
+# Save the vanilla claude command into a symlink
+RUN ln -s /home/viber/.local/bin/claude /home/viber/bin/claude-default
+
 # Auto-start + escape hatch appended to .bashrc. `claude` resolves through PATH
 # to the wrapper above; no alias needed. The SHLVL guard ensures auto-start
 # fires only on the outermost bash, not on sub-shells.
