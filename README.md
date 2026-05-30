@@ -5,7 +5,7 @@ Run an AI coding agent inside an isolated Docker or Podman container. Your crede
 Two providers are supported, selected with a flag:
 
 - `--claude` *(default)* — [Claude Code](https://claude.ai/code)
-- `--antigravity` — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
+- `--antigravity` (alias `--agy`) — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
 
 The container comes with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let the agent run your code without sudo access, fetching the needed dependencies on the fly. The volume is **shared by both providers** — it's a provider-neutral tooling cache (the agent CLIs themselves live in the image), so a Claude run and an Antigravity run use the same stack with no reinstall and no drift.
 
@@ -43,7 +43,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 |---|---|
 | `[directory]` | Path to mount into the container (positional, defaults to current directory) |
 | `--claude` | Use the Claude Code provider (default) |
-| `--antigravity` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
+| `--antigravity`, `--agy` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
 | `--command=<cmd>` | Command to run inside the container (default: the selected provider's agent). Shell metacharacters supported. |
@@ -80,7 +80,7 @@ CLI args take priority over environment variables, which take priority over buil
 
 ## Providers
 
-Pick a provider with `--claude` (default) or `--antigravity`. Each has its own image, brew volume, and credential handling. In both cases the host config is mounted **read-only** and nothing is written back to the host.
+Pick a provider with `--claude` (default) or `--antigravity` (alias `--agy`). Each has its own image, brew volume, and credential handling. In both cases the host config is mounted **read-only** and nothing is written back to the host.
 
 ### Claude (default)
 

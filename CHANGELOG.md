@@ -2,7 +2,7 @@
 
 ## 3.4.0
 
-- Add the **Antigravity CLI** (`agy`) as a selectable provider via `--antigravity`, alongside the default `--claude`: its own container image (`ghcr.io/loice5/secure-vibe/antigravity`), Dockerfile, entrypoint, and `docker:build:antigravity` / `docker:pull:antigravity` scripts
+- Add the **Antigravity CLI** (`agy`) as a selectable provider via `--antigravity` (or the shorthand `--agy`), alongside the default `--claude`: its own container image (`ghcr.io/loice5/secure-vibe/antigravity`), Dockerfile, entrypoint, and `docker:build:antigravity` / `docker:pull:antigravity` scripts
 - Start agy pre-authenticated: resolve the host token from the OS keyring (macOS Keychain / Linux Secret Service) with a `~/.gemini` token-file fallback, then forward it into the container so the session starts logged in
 - Inject the sandbox system prompt into agy via `~/.gemini/GEMINI.md` (agy has no `--append-system-prompt` flag; the global context file is prepended to every prompt)
 - Whitelist the workspace in agy's own trust store (`trustedWorkspaces` in `~/.gemini/antigravity-cli/settings.json`) so it skips the "Do you trust this folder?" dialog
