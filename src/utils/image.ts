@@ -74,9 +74,6 @@ async function checkForUpdates(runtime: Runtime, spec: ProviderSpec): Promise<vo
 
   console.info(`  Checking for image updates…`)
 
-  // Cheap path: compare the remote index digest against the local one without
-  // pulling layers. If they match, the local image is current — skip the pull
-  // entirely (fixes re-pulling an unchanged `latest` on every daily check).
   const [remoteDigest, localDigest] = await Promise.all([
     getRemoteDigest(runtime, spec.imageName),
     getLocalDigest(runtime, spec.imageName)

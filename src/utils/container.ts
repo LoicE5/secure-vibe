@@ -25,14 +25,8 @@ export async function spawnContainer(options: SpawnContainerOptions): Promise<nu
 
   const args: string[] = [
     runtime, "run", "--rm", "-it",
-    // Fixed, recognizable container name. The pid suffix is the minimal uniquifier
-    // so multiple secure-vibe instances can run concurrently without a name clash
-    // (the name frees on exit thanks to --rm).
     "--name", `secure-vibe-${spec.id}-${process.pid}`,
     "-v", `${workDir}:/home/viber/app`,
-    // Named volume for Homebrew — seeded on first run from /opt/linuxbrew-seed in
-    // the image, then persists across container restarts.
-    // To reset after a rebuild: docker volume rm <brewVolumeName>
     "-v", `${spec.brewVolumeName}:/home/linuxbrew`
   ]
 
