@@ -15,10 +15,6 @@
  *   6. Spawn either the explicit command (and set $SECURE_VIBE_EXPLICIT_CMD=1
  *      so the bashrc auto-start guard skips agy) or an interactive bash.
  *
- * Authentication: ANTIGRAVITY_API_KEY (if set) flows through the container env;
- * otherwise agy uses the mirrored ~/.config/agy/credentials.json, or prompts for
- * login. Nothing is ever written back to the host (mounts are read-only).
- *
  * The COPY directive in docker/antigravity.dockerfile maps this file to the
  * provider-agnostic in-container path /home/viber/entrypoint.ts.
  */
@@ -42,7 +38,7 @@ if(!brewReady) {
   const { exitCode } = await $`test -w /home/linuxbrew/.linuxbrew/Cellar`.nothrow().quiet()
   if(exitCode !== 0) {
     console.warn("  [entrypoint] ⚠ The brew volume is owned by a different UID — brew will fail to install packages.")
-    console.warn("  [entrypoint]   Reset it once from the host with: docker volume rm secure-vibe-antigravity-brew")
+    console.warn("  [entrypoint]   Reset it once from the host with: docker volume rm secure-vibe-brew")
   }
 }
 
@@ -50,9 +46,8 @@ const HOME_DIR = "/home/viber"
 const GEMINI_DIR = `${HOME_DIR}/.gemini`
 const AGY_DIR = `${HOME_DIR}/.config/agy`
 
-// Mirror each read-only host config mount into a writable copy so agy can refresh
-// tokens and write its own state without touching the host. Uses bash with dotglob
-// so hidden files are included alongside regular ones.
+// Copy a read-only host mount into a writable copy (agy refreshes tokens/state).
+// dotglob so hidden files come along; the host stays untouched.
 async function mirror(hostDir: string, targetDir: string): Promise<void> {
   const hostExists = await access(hostDir).then(() => true).catch(() => false)
   if(!hostExists) return
@@ -67,10 +62,8 @@ async function mirror(hostDir: string, targetDir: string): Promise<void> {
 await mirror(`${HOME_DIR}/.config/agy-host`, AGY_DIR)
 await mirror(`${HOME_DIR}/.gemini-host`, GEMINI_DIR)
 
-// ── Inject the sandbox prompt into the global GEMINI.md context ───────────────
-// agy has no --append-system-prompt flag; instead it prepends ~/.gemini/GEMINI.md
-// to every prompt across all projects. Write our sandbox facts in a marker-guarded
-// block so re-runs are idempotent and any mirrored host context is preserved.
+// agy has no --append-system-prompt flag, so the sandbox prompt goes into the
+// global ~/.gemini/GEMINI.md. Marker-guarded so it's idempotent and keeps any host context.
 const SANDBOX_PROMPT_FILE = `${HOME_DIR}/.secure-vibe-sandbox.md`
 const START_MARKER = "<!-- secure-vibe sandbox (start) -->"
 const END_MARKER = "<!-- secure-vibe sandbox (end) -->"

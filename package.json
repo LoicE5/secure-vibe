@@ -19,7 +19,6 @@
     "setup:alias": "bun scripts/alias.ts",
     "setup:completion": "bun scripts/completion.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
-    "prune:brew:antigravity": "docker volume rm secure-vibe-antigravity-brew",
     "prune:image:claude": "docker rmi ghcr.io/loice5/secure-vibe/claude:latest",
     "prune:image:antigravity": "docker rmi ghcr.io/loice5/secure-vibe/antigravity:latest"
   },

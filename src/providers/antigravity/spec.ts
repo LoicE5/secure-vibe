@@ -10,7 +10,7 @@ export const ANTIGRAVITY_PROVIDER_SPEC: ProviderSpec = {
   id: "antigravity",
   imageName: ANTIGRAVITY_IMAGE_NAME,
   dockerfilePath: ANTIGRAVITY_DOCKERFILE_PATH,
-  // Distinct from Claude's "secure-vibe-brew" so the two providers' brew volumes never collide.
-  brewVolumeName: "secure-vibe-antigravity-brew",
+  // Shared with Claude: the volume only caches provider-neutral brew tooling.
+  brewVolumeName: "secure-vibe-brew",
   imageCheckCachePath: ANTIGRAVITY_IMAGE_CHECK_PATH
 }

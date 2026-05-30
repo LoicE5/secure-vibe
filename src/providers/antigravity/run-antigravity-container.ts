@@ -15,10 +15,8 @@ export interface RunAntigravityContainerOptions {
 }
 
 /**
- * Runs the Antigravity container: resolves the host's agy credentials, mounts
- * ~/.config/agy and ~/.gemini read-only (entrypoint.ts mirrors them into writable
- * copies and injects the sandbox prompt into ~/.gemini/GEMINI.md), and delegates
- * the actual spawn to the generic helper. Nothing is ever written back to the host.
+ * Mounts ~/.gemini (and ~/.config/agy when present) read-only, injects an optional
+ * ANTIGRAVITY_API_KEY, and delegates the spawn. entrypoint.ts handles the rest.
  */
 export async function runAntigravityContainer(options: RunAntigravityContainerOptions): Promise<number> {
   const credentials = await resolveAntigravityCredentials()
@@ -28,8 +26,7 @@ export async function runAntigravityContainer(options: RunAntigravityContainerOp
     extraEnv.ANTIGRAVITY_API_KEY = credentials.apiKey
   }
 
-  // Only mount host config dirs that actually exist — passing a missing host path to
-  // `-v` would create an empty root-owned directory on the host.
+  // Skip mounts whose host path is missing — `-v` would create an empty root-owned dir.
   const candidateMounts: ReadonlyArray<ExtraMount> = [
     [AGY_CONFIG_DIR, "/home/viber/.config/agy-host", "ro"],
     [GEMINI_DIR, "/home/viber/.gemini-host", "ro"]

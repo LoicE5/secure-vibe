@@ -7,7 +7,7 @@ Two providers are supported, selected with a flag:
 - `--claude` *(default)* — [Claude Code](https://claude.ai/code)
 - `--antigravity` — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
 
-The container comes with a persistent [Homebrew](https://brew.sh) volume (one per provider, e.g. `secure-vibe-brew` / `secure-vibe-antigravity-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let the agent run your code without sudo access, fetching the needed dependencies on the fly.
+The container comes with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let the agent run your code without sudo access, fetching the needed dependencies on the fly. The volume is **shared by both providers** — it's a provider-neutral tooling cache (the agent CLIs themselves live in the image), so a Claude run and an Antigravity run use the same stack with no reinstall and no drift.
 
 > **Upgrading from an older image?** The container user is now pinned to a fixed UID (`1000`); older images derived it from your host user. If `brew` reports `Cellar is not writable`, your brew volume was seeded under the old UID — reset it once with `docker volume rm secure-vibe-brew` (it re-seeds automatically on the next run).
 
@@ -94,15 +94,15 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 
 ### Antigravity (`agy`)
 
-Antigravity stores its desktop OAuth token keyring-encrypted (`~/.gemini/antigravity-cli/credentials.enc`), which **cannot** be decrypted inside the container. Use one of the two portable options instead:
+Just log in once on the host (run `agy` and complete the Google sign-in). A personal-account login writes a **portable plaintext token** to `~/.gemini/oauth_creds.json` — on macOS **and** Linux, with no system keychain involved — so secure-vibe simply mounts your `~/.gemini` and you're authenticated inside the container, the same way Claude's `~/.claude.json` works.
 
-- **API key** *(simplest)* — set `ANTIGRAVITY_API_KEY` (a Google AI Studio key) in your environment; it's passed straight through to the container.
-- **Headless token** — run a non-interactive login on the host so `agy` writes `~/.config/agy/credentials.json`:
-  ```sh
-  SSH_CONNECTION="127.0.0.1 0 127.0.0.1 0" agy auth login   # prints a URL + code to complete in a browser
-  ```
+Resolution order:
 
-The host `~/.config/agy` and `~/.gemini` directories are mounted **read-only** and mirrored into writable copies inside the container. If no credentials are found, `agy` falls back to prompting for login inside the container.
+1. `ANTIGRAVITY_API_KEY` env var (a Google AI Studio key), passed straight through — optional alternative to OAuth.
+2. `~/.gemini/oauth_creds.json` (personal OAuth login) — the usual path.
+3. `~/.config/agy/credentials.json` (some CI/headless setups) — mounted when present.
+
+The host `~/.gemini` (and `~/.config/agy`, if present) are mounted **read-only** and mirrored into writable copies inside the container; agy refreshes its token in the in-container copy only, so **nothing is ever written back to the host**. If no credentials are found, `agy` falls back to prompting for login inside the container.
 
 Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
 
@@ -117,8 +117,7 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 | `bun run build` | Compile a standalone binary for the current platform into `dist/secure-vibe` |
 | `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
 | `bun run build:x64` | Compile for macOS x64 (Intel) |
-| `bun run prune:brew` | Delete the persistent Homebrew volume (Claude provider) |
-| `bun run prune:brew:antigravity` | Delete the persistent Homebrew volume (Antigravity provider) |
+| `bun run prune:brew` | Delete the shared persistent Homebrew volume (both providers) |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
 | `bun run docker:build:claude` / `docker:build:antigravity` | Build a provider image locally |

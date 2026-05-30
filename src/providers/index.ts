@@ -8,7 +8,6 @@ import { ANTIGRAVITY_PROVIDER_SPEC } from "./antigravity/spec"
 export const PROVIDER_RUNNERS: Partial<Record<ProviderId, ProviderRunner>> = {
   claude: runClaudeContainer,
   antigravity: runAntigravityContainer
-  // Future: codex: runCodexContainer, mistral: runMistralContainer, ccr: runCcrContainer
 }
 
 /** Registry mapping each ProviderId to its static spec (image, dockerfile, brew volume). */

@@ -1,23 +1,23 @@
 import { homedir } from "os"
 import { join } from "path"
 
-/** Host's ~/.config/agy directory — mounted read-only into the container as /home/viber/.config/agy-host. */
-export const AGY_CONFIG_DIR = join(homedir(), ".config", "agy")
-
-/** Host's ~/.gemini directory — antigravity-cli settings, plugins, and global GEMINI.md context. Mounted read-only. */
+/** Host's ~/.gemini — agy's OAuth token, account, settings, and antigravity-cli state. Mounted read-only. */
 export const GEMINI_DIR = join(homedir(), ".gemini")
 
-/** Portable headless/CI token written by `agy auth login` in a non-interactive session. */
+/** Portable plaintext OAuth token from a personal login (no keychain, macOS and Linux alike). */
+export const GEMINI_OAUTH_CREDS = join(GEMINI_DIR, "oauth_creds.json")
+
+/** Host's ~/.config/agy — only some CI/headless setups use it; mounted when present. */
+export const AGY_CONFIG_DIR = join(homedir(), ".config", "agy")
+
+/** Token some CI/headless setups cache (see AGY_CONFIG_DIR). */
 export const AGY_CREDENTIALS_JSON = join(AGY_CONFIG_DIR, "credentials.json")
 
-/** Keyring-encrypted OAuth token from a desktop login — NOT portable into the container (decrypts via the host keyring only). */
-export const AGY_CREDENTIALS_ENC = join(GEMINI_DIR, "antigravity-cli", "credentials.enc")
-
-/** Container image for the Antigravity provider, published to GitHub Container Registry (GHCR allows nested paths, unlike Docker Hub). */
+/** Container image, published to GHCR (nested paths allowed, unlike Docker Hub). */
 export const ANTIGRAVITY_IMAGE_NAME = "ghcr.io/loice5/secure-vibe/antigravity:latest"
 
-/** Per-provider cache file recording the last day the image was pulled for updates. */
+/** Cache file recording the last day the image was checked for updates. */
 export const ANTIGRAVITY_IMAGE_CHECK_PATH = join(homedir(), ".cache", "secure-vibe", "image-check-antigravity")
 
-/** Explicit Dockerfile path, passed via -f so the file can live outside the build-context root. */
+/** Dockerfile path, passed via -f so it can live outside the build-context root. */
 export const ANTIGRAVITY_DOCKERFILE_PATH = join(import.meta.dir, "..", "..", "..", "docker", "antigravity.dockerfile")
