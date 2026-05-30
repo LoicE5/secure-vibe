@@ -94,13 +94,15 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 
 ### Antigravity (`agy`)
 
-Just log in once on the host (`agy`, complete Google sign-in) — secure-vibe handles the rest, same as Claude. On the host `agy` stores its OAuth token in the OS keyring (macOS Keychain); inside a container it detects `/.dockerenv` and reads the token from a file instead. So secure-vibe reads your token from the host keyring and writes it to that file in the container, and `agy` starts already logged in:
+Log in once on the host (`agy`, complete Google sign-in) — secure-vibe handles the rest, same as Claude. `agy` keeps its OAuth token in the OS keyring; inside a container it detects `/.dockerenv` and reads the token from a file instead. secure-vibe reads your host token, decodes it, and writes it to the container's token file, so `agy` starts already logged in. Resolution order:
 
-- **macOS** — read from the Keychain (`security find-generic-password -s antigravity-cli -a google_credentials`).
-- **Linux host** — read from `~/.gemini/antigravity-cli/antigravity-oauth-token`.
-- The token is injected via env and written to the container's `~/.gemini/antigravity-cli/antigravity-oauth-token`; `~/.gemini` itself is mounted **read-only** for settings. Nothing is written back to the host.
+1. **`ANTIGRAVITY_API_KEY`** env var (a Google AI Studio key) — non-interactive alternative.
+2. **OS keyring** (go-keyring service `gemini`, account `antigravity`):
+   - **macOS** — Keychain via `security`.
+   - **Linux desktop** — Secret Service (gnome-keyring/KWallet) via `secret-tool` (needs `libsecret-tools` on the host).
+3. **Token file** `~/.gemini/antigravity-cli/antigravity-oauth-token` — used by **headless Linux** (where `agy` itself falls back to file storage) or a manual drop-in.
 
-Alternatively set **`ANTIGRAVITY_API_KEY`** (a Google AI Studio key) for non-interactive auth.
+The token is injected via env and written to the container's `~/.gemini/antigravity-cli/antigravity-oauth-token` (go-keyring base64-decoded to the raw JSON `agy` expects); `~/.gemini` is mounted **read-only** for settings. Nothing is written back to the host.
 
 Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
 
