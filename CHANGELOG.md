@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.1
+
+- Fix `claude-default` (the raw-binary escape hatch) being unavailable in the `--command` execution path (`bash -c` never sources `.bashrc`, so the alias didn't exist). It's now a real entry on PATH at `/home/viber/bin/claude-default` (a symlink to the raw binary), like the `claude` wrapper, so it works in non-interactive shells too
+
 ## 3.3.0
 
 - Add dynamic shell tab-completion for the `secure-vibe` command (bash and zsh): completes flags, their values (`--save` → `zip`/`copy`/`no`, `--runtime` → `docker`/`podman`), and the directory positional. Install with `bun run setup:alias` (now wires up both the command and completion) or `bun run setup:completion`
