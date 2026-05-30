@@ -7,8 +7,7 @@ import { resolveGitConfig } from "./utils/git-identity"
 import { saveDirectory } from "./utils/save-directory"
 import { parseExcludePatterns, resolveExcludedFiles, moveSecretsOut, moveSecretsBack } from "./utils/secrets"
 import { ensureImage } from "./utils/image"
-import { resolveProviderRunner } from "./providers"
-import { CLAUDE_PROVIDER_SPEC } from "./providers/claude/spec"
+import { resolveProviderRunner, resolveProviderSpec } from "./providers"
 import { CLEAN_EXIT_CODES } from "./constants"
 
 // ── Dynamic shell completion ────────────────────────────────────────────────
@@ -50,9 +49,8 @@ const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
 
-// TODO(multi-provider): swap CLAUDE_PROVIDER_SPEC for a per-provider spec lookup
-// (PROVIDER_SPECS[providerId]) once a second provider lands.
-await ensureImage(runtime, CLAUDE_PROVIDER_SPEC, buildFlag, buildNCFlag, pullFlag)
+const providerSpec = resolveProviderSpec(providerId)
+await ensureImage(runtime, providerSpec, buildFlag, buildNCFlag, pullFlag)
 
 // Resolve files to exclude — done after ensureImage so pre-flight failures
 // (which call process.exit internally) never leave files displaced.

@@ -1,9 +1,8 @@
 import type { Runtime } from "./runtime"
 import type { GitIdentity } from "./git"
 
-/** Identifier of a CLI provider. Only "claude" has a runner today; the rest are reserved. */
-export type ProviderId = "claude" | "codex" | "mistral" | "ccr"
-
+/** Identifier of a CLI provider. "claude" and "antigravity" have runners today. */
+export type ProviderId = "claude" | "antigravity"
 /** Static metadata describing a provider — fed to the generic container/image helpers. */
 export interface ProviderSpec {
   id: ProviderId

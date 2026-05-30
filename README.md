@@ -1,8 +1,13 @@
 # secure-vibe
 
-Run Claude Code inside an isolated Docker or Podman container. Your credentials are injected automatically — no manual auth inside the container. Your host system stays untouched. *Bypass permissions* mode becomes reasonable.
+Run an AI coding agent inside an isolated Docker or Podman container. Your credentials are injected automatically — no manual auth inside the container. Your host system stays untouched. *Bypass permissions* mode becomes reasonable.
 
-The container comes with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let claude run your code without sudo access, fetching the needed dependencies on the fly.
+Two providers are supported, selected with a flag:
+
+- `--claude` *(default)* — [Claude Code](https://claude.ai/code)
+- `--antigravity` — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
+
+The container comes with a persistent [Homebrew](https://brew.sh) volume (one per provider, e.g. `secure-vibe-brew` / `secure-vibe-antigravity-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let the agent run your code without sudo access, fetching the needed dependencies on the fly.
 
 > **Upgrading from an older image?** The container user is now pinned to a fixed UID (`1000`); older images derived it from your host user. If `brew` reports `Cellar is not writable`, your brew volume was seeded under the old UID — reset it once with `docker volume rm secure-vibe-brew` (it re-seeds automatically on the next run).
 
@@ -12,7 +17,9 @@ The container comes with a persistent [Homebrew](https://brew.sh) volume (`secur
 
 - [Bun](https://bun.sh)
 - **Docker** or Podman (running)
-- Claude Code installed and authenticated on the host
+- The provider you intend to use, authenticated on the host:
+  - Claude: Claude Code installed and authenticated
+  - Antigravity: see [Providers](#providers) for auth options
 
 ## Run
 
@@ -21,7 +28,8 @@ bun vibe                        # mount the current directory
 bun vibe /path/to/project       # mount a specific directory
 bun vibe . --save=zip           # zip the directory before starting
 bun vibe . --runtime=podman     # force podman
-bun vibe . --command=bash       # open a shell instead of Claude
+bun vibe . --command=bash       # open a shell instead of the agent
+bun vibe . --antigravity        # use Google's Antigravity CLI instead of Claude
 bun vibe . --build              # rebuild the image before starting
 bun vibe . --build-no-cache     # rebuild without cache
 bun vibe . --pull               # force-pull the latest image before starting
@@ -34,9 +42,11 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | Parameter | Description |
 |---|---|
 | `[directory]` | Path to mount into the container (positional, defaults to current directory) |
+| `--claude` | Use the Claude Code provider (default) |
+| `--antigravity` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
-| `--command=<cmd>` | Command to run inside the container (default: Claude Code). Shell metacharacters supported. |
+| `--command=<cmd>` | Command to run inside the container (default: the selected provider's agent). Shell metacharacters supported. |
 | `--build` | Rebuild the image before starting |
 | `--build-no-cache` | Rebuild the image from scratch (no layer cache) |
 | `--pull` | Force-pull the latest image before starting |
@@ -56,6 +66,7 @@ secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls 
 | `BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
 | `PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
 | `EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
+| `ANTIGRAVITY_API_KEY` | Google AI Studio API key, passed through to the Antigravity provider for non-interactive auth (see [Providers](#providers)) |
 
 Copy `.env.example` to `.env` and set your defaults:
 
@@ -67,7 +78,11 @@ bun run env:init
 
 CLI args take priority over environment variables, which take priority over built-in defaults. There are no interactive prompts. When both docker and podman are available and no runtime is specified, docker is used (falling back to podman if docker isn't running); override with `RUNTIME` or `--runtime`.
 
-## Credentials
+## Providers
+
+Pick a provider with `--claude` (default) or `--antigravity`. Each has its own image, brew volume, and credential handling. In both cases the host config is mounted **read-only** and nothing is written back to the host.
+
+### Claude (default)
 
 Credentials are resolved automatically in this order:
 
@@ -76,6 +91,20 @@ Credentials are resolved automatically in this order:
 3. `~/.claude/.credentials.json` (legacy fallback)
 
 The host `~/.claude` directory is mounted **read-only**. Credentials are injected into the container via an environment variable and written to the container's own `~/.claude` — nothing is ever written back to the host.
+
+### Antigravity (`agy`)
+
+Antigravity stores its desktop OAuth token keyring-encrypted (`~/.gemini/antigravity-cli/credentials.enc`), which **cannot** be decrypted inside the container. Use one of the two portable options instead:
+
+- **API key** *(simplest)* — set `ANTIGRAVITY_API_KEY` (a Google AI Studio key) in your environment; it's passed straight through to the container.
+- **Headless token** — run a non-interactive login on the host so `agy` writes `~/.config/agy/credentials.json`:
+  ```sh
+  SSH_CONNECTION="127.0.0.1 0 127.0.0.1 0" agy auth login   # prints a URL + code to complete in a browser
+  ```
+
+The host `~/.config/agy` and `~/.gemini` directories are mounted **read-only** and mirrored into writable copies inside the container. If no credentials are found, `agy` falls back to prompting for login inside the container.
+
+Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
 
 ## Bun scripts
 
@@ -88,8 +117,11 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 | `bun run build` | Compile a standalone binary for the current platform into `dist/secure-vibe` |
 | `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
 | `bun run build:x64` | Compile for macOS x64 (Intel) |
-| `bun run prune:brew` | Delete the persistent Homebrew volume |
+| `bun run prune:brew` | Delete the persistent Homebrew volume (Claude provider) |
+| `bun run prune:brew:antigravity` | Delete the persistent Homebrew volume (Antigravity provider) |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
+| `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
+| `bun run docker:build:claude` / `docker:build:antigravity` | Build a provider image locally |
 
 ## Shell completion
 
