@@ -54,29 +54,14 @@ COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-s
 RUN mkdir -p /home/viber/bin
 ENV PATH="/home/viber/bin:/home/viber/.local/bin:${PATH}"
 
-RUN printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'exec /home/viber/.local/bin/claude \' \
-    '  --dangerously-skip-permissions \' \
-    '  --append-system-prompt "$(cat /home/viber/.secure-vibe-sandbox.md)" \' \
-    '  "$@"' \
-    > /home/viber/bin/claude && chmod +x /home/viber/bin/claude
+COPY --chown=viber:viber src/assets/claude-wrapper.sh /home/viber/bin/claude
+RUN chmod +x /home/viber/bin/claude
 
 # Auto-start + escape hatch appended to .bashrc. `claude` resolves through PATH
 # to the wrapper above; no alias needed. The SHLVL guard ensures auto-start
 # fires only on the outermost bash, not on sub-shells.
-RUN printf '%s\n' \
-    '' \
-    '# secure-vibe: claude escape hatch (raw binary, no injected flags)' \
-    "alias claude-default='/home/viber/.local/bin/claude'" \
-    '' \
-    '# secure-vibe: auto-start claude on first shell' \
-    'if [[ $SHLVL -eq 1 && -z "${SECURE_VIBE_EXPLICIT_CMD:-}" ]]; then' \
-    '  claude || true' \
-    '  echo ""' \
-    "  echo \"Claude exited. Type 'claude' to restart.\"" \
-    'fi' \
-    >> /home/viber/.bashrc
+COPY --chown=viber:viber src/assets/bashrc-append.sh /tmp/bashrc-append.sh
+RUN cat /tmp/bashrc-append.sh >> /home/viber/.bashrc && rm /tmp/bashrc-append.sh
 
 COPY --chown=viber:viber src/entrypoints/claude.ts /home/viber/entrypoint.ts
 

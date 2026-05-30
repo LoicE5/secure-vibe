@@ -25,10 +25,8 @@ export async function spawnContainer(options: SpawnContainerOptions): Promise<nu
 
   const args: string[] = [
     runtime, "run", "--rm", "-it",
+    "--name", `secure-vibe-${spec.id}-${process.pid}`,
     "-v", `${workDir}:/home/viber/app`,
-    // Named volume for Homebrew — seeded on first run from /opt/linuxbrew-seed in
-    // the image, then persists across container restarts.
-    // To reset after a rebuild: docker volume rm <brewVolumeName>
     "-v", `${spec.brewVolumeName}:/home/linuxbrew`
   ]
 

@@ -34,6 +34,28 @@ async function pullImage(runtime: Runtime, spec: ProviderSpec): Promise<boolean>
   return pullExit === 0
 }
 
+/** Local registry digest (sha256:…) of `image` from its RepoDigests, or null if absent. */
+async function getLocalDigest(runtime: Runtime, image: string): Promise<string | null> {
+  const { stdout, exitCode } = await $`${runtime} image inspect ${image} --format ${"{{index .RepoDigests 0}}"}`.quiet().nothrow()
+  if(exitCode !== 0) return null
+  // Format is `name@sha256:…` — keep the digest part only.
+  const digest = stdout.toString().trim().split("@").at(-1) ?? ""
+  return digest.startsWith("sha256:") ? digest : null
+}
+
+/**
+ * Remote index digest (sha256:…) of `image` without pulling layers.
+ * Uses `docker buildx imagetools inspect`; returns null on any failure or on
+ * runtimes without buildx (e.g. podman), so callers fall back to a plain pull.
+ */
+async function getRemoteDigest(runtime: Runtime, image: string): Promise<string | null> {
+  if(runtime !== "docker") return null
+  const { stdout, exitCode } = await $`${runtime} buildx imagetools inspect ${image} --format ${"{{.Manifest.Digest}}"}`.quiet().nothrow()
+  if(exitCode !== 0) return null
+  const digest = stdout.toString().trim()
+  return digest.startsWith("sha256:") ? digest : null
+}
+
 /**
  * Once a day, attempts a pull and reports whether the image actually changed.
  * Cache file lives at `spec.imageCheckCachePath`. Best-effort — failures are warnings.
@@ -51,6 +73,18 @@ async function checkForUpdates(runtime: Runtime, spec: ProviderSpec): Promise<vo
   }
 
   console.info(`  Checking for image updates…`)
+
+  const [remoteDigest, localDigest] = await Promise.all([
+    getRemoteDigest(runtime, spec.imageName),
+    getLocalDigest(runtime, spec.imageName)
+  ])
+  if(remoteDigest && localDigest && remoteDigest === localDigest) {
+    console.info(`  Image is already up to date.`)
+    await mkdir(dirname(spec.imageCheckCachePath), { recursive: true })
+    await Bun.write(spec.imageCheckCachePath, today)
+    return
+  }
+
   const idBefore = (await $`${runtime} images ${spec.imageName} -q`.text()).trim()
   const pulled = await pullImage(runtime, spec)
 
