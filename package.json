@@ -14,6 +14,7 @@
     "docker:build:claude:no-cache": "docker build --no-cache -f docker/claude.dockerfile -t ghcr.io/loice5/secure-vibe/claude:latest .",
     "docker:pull:claude": "docker pull ghcr.io/loice5/secure-vibe/claude:latest",
     "setup:alias": "bun scripts/alias.ts",
+    "setup:completion": "bun scripts/completion.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
     "prune:image:claude": "docker rmi ghcr.io/loice5/secure-vibe/claude:latest"
   },

@@ -83,11 +83,33 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 |---|---|
 | `bun vibe` / `bun start` | Start the container |
 | `bun run env:init` | Copy `.env.example` to `.env` (no-op if `.env` already exists) |
+| `bun run setup:alias` | Install the `secure-vibe` shell alias **and** tab-completion (see [Shell completion](#shell-completion)) |
+| `bun run setup:completion` | Install tab-completion only |
 | `bun run build` | Compile a standalone binary for the current platform into `dist/secure-vibe` |
 | `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
 | `bun run build:x64` | Compile for macOS x64 (Intel) |
 | `bun run prune:brew` | Delete the persistent Homebrew volume |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
+
+## Shell completion
+
+```sh
+bun run setup:alias        # installs the `secure-vibe` alias + tab-completion
+exec $SHELL                # or: source ~/.bashrc / ~/.zshrc
+```
+
+After setup, press `<TAB>` to complete flags, their values, and the directory:
+
+```sh
+secure-vibe <TAB>             # flags + directory names
+secure-vibe --<TAB>           # --save --runtime --command --exclude --build …
+secure-vibe --runtime <TAB>   # docker  podman
+secure-vibe --save=<TAB>      # zip  copy  no
+```
+
+Completion is **dynamic**: the installed shell stub asks the live `secure-vibe` for its
+suggestions on each `<TAB>`, so it **stays current automatically** as the tool gains flags —
+you never need to re-run setup after upgrading. Supports bash and zsh.
 
 ## Excluding files
 
