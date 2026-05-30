@@ -57,10 +57,7 @@ ENV PATH="/home/viber/bin:/home/viber/.local/bin:${PATH}"
 COPY --chown=viber:viber src/assets/claude-wrapper.sh /home/viber/bin/claude
 RUN chmod +x /home/viber/bin/claude
 
-# Escape hatch: the raw claude binary with no injected flags, exposed on PATH so
-# it works in every execution path — including the explicit-command entrypoint,
-# which runs `bash -c` and never sources .bashrc. A symlink (not an alias) is
-# what makes that third path work; see the note in bashrc-append.sh.
+# Save the vanilla claude command into a symlink
 RUN ln -s /home/viber/.local/bin/claude /home/viber/bin/claude-default
 
 # Auto-start + escape hatch appended to .bashrc. `claude` resolves through PATH
