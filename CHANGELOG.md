@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.0
+
+- Add dynamic shell tab-completion for the `secure-vibe` command (bash and zsh): completes flags, their values (`--save` → `zip`/`copy`/`no`, `--runtime` → `docker`/`podman`), and the directory positional. Install with `bun run setup:alias` (now wires up both the command and completion) or `bun run setup:completion`
+- Completion is computed by the live binary on each `<TAB>` (a hidden `__complete` subcommand reading the same flag spec as the parser), so it stays current as flags evolve — no need to re-run setup after upgrading
+- Install `secure-vibe` as a shell function instead of an alias so zsh routes completion correctly; the setup step migrates any existing alias automatically
+
 ## 3.2.0
 
 - Name every container `secure-vibe-<provider>-<pid>` by default so it's easy to spot in `docker ps`; the pid suffix lets multiple secure-vibe instances run side by side without name clashes
