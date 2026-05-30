@@ -5,13 +5,16 @@
  *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
  *   2. Mirror the read-only ~/.gemini-host mount into a writable copy, then write
  *      the host agy token ($AGY_OAUTH_TOKEN) to the file agy reads in a container.
- *   3. Inject the sandbox prompt into ~/.gemini/GEMINI.md (agy has no
+ *   3. Whitelist the workspace in ~/.gemini/trustedFolders.json so agy skips its
+ *      "Do you trust this folder?" dialog (--dangerously-skip-permissions only
+ *      covers tool actions, not folder trust). Merged so host entries survive.
+ *   4. Inject the sandbox prompt into ~/.gemini/GEMINI.md (agy has no
  *      --append-system-prompt flag; the global GEMINI.md is prepended to every
  *      prompt). Marker-guarded so it's idempotent and keeps any existing context.
- *   4. Apply host git identity from $GIT_USER_NAME / $GIT_USER_EMAIL.
- *   5. Ignore SIGINT at PID 1 so Ctrl+C kills only the foreground job (agy)
+ *   5. Apply host git identity from $GIT_USER_NAME / $GIT_USER_EMAIL.
+ *   6. Ignore SIGINT at PID 1 so Ctrl+C kills only the foreground job (agy)
  *      without exiting the shell.
- *   6. Spawn either the explicit command (and set $SECURE_VIBE_EXPLICIT_CMD=1
+ *   7. Spawn either the explicit command (and set $SECURE_VIBE_EXPLICIT_CMD=1
  *      so the bashrc auto-start guard skips agy) or an interactive bash.
  *
  * The COPY directive in docker/antigravity.dockerfile maps this file to the
@@ -66,6 +69,27 @@ if(agyToken) {
   const tokenDir = `${GEMINI_DIR}/antigravity-cli`
   await mkdir(tokenDir, { recursive: true })
   await writeFile(`${tokenDir}/antigravity-oauth-token`, agyToken, { mode: 0o600 })
+}
+
+// Whitelist the workspace so agy skips its "Do you trust this folder?" dialog
+// (the wrapper's --dangerously-skip-permissions only auto-approves tool actions).
+// Merge into any mirrored host trustedFolders.json so the user's other entries survive.
+const APP_DIR = "/home/viber/app"
+const trustedPath = `${GEMINI_DIR}/trustedFolders.json`
+let trusted: Record<string, string> = {}
+const rawTrusted = await readFile(trustedPath, "utf-8").catch(() => "")
+if(rawTrusted) {
+  try {
+    trusted = JSON.parse(rawTrusted) as Record<string, string>
+  } catch(parseError: unknown) {
+    console.warn("  [entrypoint] trustedFolders.json was not valid JSON; recreating it:", parseError)
+    trusted = {}
+  }
+}
+if(!trusted[APP_DIR]) {
+  trusted[APP_DIR] = "TRUST_FOLDER"
+  await mkdir(GEMINI_DIR, { recursive: true })
+  await writeFile(trustedPath, JSON.stringify(trusted), { mode: 0o600 })
 }
 
 // agy has no --append-system-prompt flag, so the sandbox prompt goes into the

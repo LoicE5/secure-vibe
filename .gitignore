@@ -11,3 +11,4 @@ PROGRESS.md
 PLAN.md
 temp/
 .antigravitycli
+.claude/*.lock
