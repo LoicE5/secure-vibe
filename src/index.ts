@@ -1,4 +1,5 @@
 import { parseArgs, getEnvConfig, getBoolEnv } from "./utils/args"
+import { runCompletion } from "./utils/completion"
 import { selectDirectory } from "./utils/select-directory"
 import { selectSaveOption } from "./utils/select-save"
 import { selectRuntime } from "./utils/select-runtime"
@@ -9,6 +10,14 @@ import { ensureImage } from "./utils/image"
 import { resolveProviderRunner } from "./providers"
 import { CLAUDE_PROVIDER_SPEC } from "./providers/claude/spec"
 import { CLEAN_EXIT_CODES } from "./constants"
+
+// ── Dynamic shell completion ────────────────────────────────────────────────
+// The installed shell stub calls `secure-vibe __complete <words…>` on each TAB.
+// Handle it before anything else (no image build, no prompts) and exit.
+if(process.argv.at(2) === "__complete") {
+  runCompletion(process.argv.slice(3))
+  process.exit(0)
+}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 

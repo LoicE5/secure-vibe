@@ -1,78 +1,64 @@
 import type { ParsedArgs, ProviderId } from "../types"
-
-/** Maps each provider-selection flag (and its aliases) to a ProviderId. */
-const PROVIDER_FLAGS: Record<string, ProviderId> = {
-  "--claude": "claude",
-  "--codex": "codex",
-  "--chatgpt": "codex",
-  "--gpt": "codex",
-  "--mistral": "mistral",
-  "--ccr": "ccr"
-}
+import type { BooleanFlag, ValueFlag } from "../constants"
+import { FLAGS, PROVIDER_FLAGS } from "../constants"
 
 /**
  * Parses process.argv into a ParsedArgs object. Unknown flags are silently ignored.
  * The first positional becomes `directory`; remaining positionals join into `command`
  * (unless --command was passed explicitly).
+ *
+ * Boolean/value flags are driven by the shared FLAGS spec (src/constants/flags.ts),
+ * the same source the dynamic completion handler reads — so the two never drift.
  */
 export function parseArgs(): ParsedArgs {
   const argv = process.argv.slice(2)
   const positionals: string[] = []
-  let save: string | null = null
-  let runtime: string | null = null
-  let command: string | null = null
-  let exclude: string | null = null
-  let build = false
-  let buildNoCache = false
-  let pull = false
+  const values: Record<ValueFlag["key"], string | null> = { save: null, runtime: null, command: null, exclude: null }
+  const booleans = { build: false, buildNoCache: false, pull: false }
   let provider: ProviderId | null = null
 
   const consumed = new Set<number>()
-  for(const [index, arg] of argv.entries()) {
+  for(const [index, argument] of argv.entries()) {
     if(consumed.has(index)) continue
-    if(arg === "--build-no-cache") {
-      buildNoCache = true
-    } else if(arg === "--build") {
-      build = true
-    } else if(arg === "--pull") {
-      pull = true
-    } else if(PROVIDER_FLAGS[arg]) {
-      provider = PROVIDER_FLAGS[arg]!
-    } else if(arg.startsWith("--runtime=")) {
-      runtime = arg.slice("--runtime=".length)
-    } else if(arg === "--runtime" && index + 1 < argv.length) {
-      runtime = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(arg.startsWith("--save=")) {
-      save = arg.slice("--save=".length)
-    } else if(arg === "--save" && index + 1 < argv.length) {
-      save = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(arg.startsWith("--command=")) {
-      command = arg.slice("--command=".length)
-    } else if(arg === "--command" && index + 1 < argv.length) {
-      command = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(arg.startsWith("--exclude=")) {
-      exclude = arg.slice("--exclude=".length)
-    } else if(arg === "--exclude" && index + 1 < argv.length) {
-      exclude = argv.at(index + 1)!
-      consumed.add(index + 1)
-    } else if(!arg.startsWith("-")) {
-      positionals.push(arg)
+
+    const booleanFlag = FLAGS.find((flag): flag is BooleanFlag => flag.kind === "boolean" && flag.name === argument)
+    if(booleanFlag) {
+      booleans[booleanFlag.key] = true
+      continue
     }
+
+    if(PROVIDER_FLAGS[argument]) {
+      provider = PROVIDER_FLAGS[argument]!
+      continue
+    }
+
+    // Match a value flag in either `--flag=value` or `--flag value` form.
+    const valueFlag = FLAGS.find(
+      (flag): flag is ValueFlag => flag.kind === "value" && (argument === flag.name || argument.startsWith(`${flag.name}=`))
+    )
+    if(valueFlag) {
+      if(argument.startsWith(`${valueFlag.name}=`)) {
+        values[valueFlag.key] = argument.slice(valueFlag.name.length + 1)
+      } else if(index + 1 < argv.length) {
+        values[valueFlag.key] = argv.at(index + 1)!
+        consumed.add(index + 1)
+      }
+      continue
+    }
+
+    if(!argument.startsWith("-")) positionals.push(argument)
     // Unknown flags are ignored
   }
 
   return {
     directory: positionals.at(0) ?? null,
-    save,
-    runtime,
-    command: command ?? (positionals.slice(1).join(" ") || null),
-    exclude,
-    build,
-    buildNoCache,
-    pull,
+    save: values.save,
+    runtime: values.runtime,
+    command: values.command ?? (positionals.slice(1).join(" ") || null),
+    exclude: values.exclude,
+    build: booleans.build,
+    buildNoCache: booleans.buildNoCache,
+    pull: booleans.pull,
     provider
   }
 }

@@ -1,8 +1,11 @@
 import { homedir } from "os"
-import type { SaveMode } from "../types"
+import type { SaveMode, Runtime } from "../types"
 
 /** Valid CLI values for --save. "no" disables the save step. */
 export const VALID_SAVE_MODES: SaveMode[] = ["zip", "copy", "no"]
+
+/** Valid CLI values for --runtime. Mirrors the Runtime type as a value so the parser and completion can share it. */
+export const VALID_RUNTIMES: Runtime[] = ["docker", "podman"]
 
 /**
  * Exit codes that indicate a normal user-initiated termination (e.g. typing exit,
