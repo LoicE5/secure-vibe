@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.0
+
+- Name every container `secure-vibe-<provider>-<pid>` by default so it's easy to spot in `docker ps`; the pid suffix lets multiple secure-vibe instances run side by side without name clashes
+- Skip the daily image pull when the local `latest` already matches the registry digest (compared via `docker buildx imagetools inspect`) instead of re-pulling on every check; podman and offline runs fall back to the previous pull behaviour
+- Stop attaching the inline provenance/SBOM attestation that surfaced as an `unknown/unknown` platform in the published multi-arch manifest list
+- Move the in-container `claude` wrapper and `.bashrc` auto-start snippet into `src/assets/*.sh` files copied in at build time, replacing the inline `printf` blocks
+
 ## 3.1.0
 
 - Inject a sandbox system prompt into Claude on container start (via a `/home/viber/bin/claude` wrapper that adds `--dangerously-skip-permissions` and `--append-system-prompt`), so the flags apply in every execution path — interactive shell, auto-start, and `--command`
