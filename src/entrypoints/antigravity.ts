@@ -3,12 +3,11 @@
  *
  * Runs every time the Antigravity provider container starts. Responsibilities:
  *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
- *   2. Mirror the read-only ~/.config/agy-host and ~/.gemini-host mounts into
- *      writable copies (agy needs to write/refresh tokens and state).
+ *   2. Mirror the read-only ~/.gemini-host mount into a writable copy, then write
+ *      the host agy token ($AGY_OAUTH_TOKEN) to the file agy reads in a container.
  *   3. Inject the sandbox prompt into ~/.gemini/GEMINI.md (agy has no
  *      --append-system-prompt flag; the global GEMINI.md is prepended to every
- *      prompt). Written in a marker-guarded block so it's idempotent and never
- *      clobbers global context mirrored from the host.
+ *      prompt). Marker-guarded so it's idempotent and keeps any existing context.
  *   4. Apply host git identity from $GIT_USER_NAME / $GIT_USER_EMAIL.
  *   5. Ignore SIGINT at PID 1 so Ctrl+C kills only the foreground job (agy)
  *      without exiting the shell.
@@ -44,9 +43,8 @@ if(!brewReady) {
 
 const HOME_DIR = "/home/viber"
 const GEMINI_DIR = `${HOME_DIR}/.gemini`
-const AGY_DIR = `${HOME_DIR}/.config/agy`
 
-// Copy a read-only host mount into a writable copy (agy refreshes tokens/state).
+// Copy a read-only host mount into a writable copy (agy refreshes its own state).
 // dotglob so hidden files come along; the host stays untouched.
 async function mirror(hostDir: string, targetDir: string): Promise<void> {
   const hostExists = await access(hostDir).then(() => true).catch(() => false)
@@ -59,11 +57,19 @@ async function mirror(hostDir: string, targetDir: string): Promise<void> {
   await cpProc.exited
 }
 
-await mirror(`${HOME_DIR}/.config/agy-host`, AGY_DIR)
 await mirror(`${HOME_DIR}/.gemini-host`, GEMINI_DIR)
 
+// Write the host's agy token to the file agy reads in container mode (it skips the
+// keyring when it detects /.dockerenv), so the session starts logged in.
+const agyToken = process.env.AGY_OAUTH_TOKEN
+if(agyToken) {
+  const tokenDir = `${GEMINI_DIR}/antigravity-cli`
+  await mkdir(tokenDir, { recursive: true })
+  await writeFile(`${tokenDir}/antigravity-oauth-token`, agyToken, { mode: 0o600 })
+}
+
 // agy has no --append-system-prompt flag, so the sandbox prompt goes into the
-// global ~/.gemini/GEMINI.md. Marker-guarded so it's idempotent and keeps any host context.
+// global ~/.gemini/GEMINI.md. Marker-guarded so it's idempotent and keeps existing context.
 const SANDBOX_PROMPT_FILE = `${HOME_DIR}/.secure-vibe-sandbox.md`
 const START_MARKER = "<!-- secure-vibe sandbox (start) -->"
 const END_MARKER = "<!-- secure-vibe sandbox (end) -->"

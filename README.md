@@ -94,15 +94,13 @@ The host `~/.claude` directory is mounted **read-only**. Credentials are injecte
 
 ### Antigravity (`agy`)
 
-Just log in once on the host (run `agy` and complete the Google sign-in). A personal-account login writes a **portable plaintext token** to `~/.gemini/oauth_creds.json` — on macOS **and** Linux, with no system keychain involved — so secure-vibe simply mounts your `~/.gemini` and you're authenticated inside the container, the same way Claude's `~/.claude.json` works.
+Just log in once on the host (`agy`, complete Google sign-in) — secure-vibe handles the rest, same as Claude. On the host `agy` stores its OAuth token in the OS keyring (macOS Keychain); inside a container it detects `/.dockerenv` and reads the token from a file instead. So secure-vibe reads your token from the host keyring and writes it to that file in the container, and `agy` starts already logged in:
 
-Resolution order:
+- **macOS** — read from the Keychain (`security find-generic-password -s antigravity-cli -a google_credentials`).
+- **Linux host** — read from `~/.gemini/antigravity-cli/antigravity-oauth-token`.
+- The token is injected via env and written to the container's `~/.gemini/antigravity-cli/antigravity-oauth-token`; `~/.gemini` itself is mounted **read-only** for settings. Nothing is written back to the host.
 
-1. `ANTIGRAVITY_API_KEY` env var (a Google AI Studio key), passed straight through — optional alternative to OAuth.
-2. `~/.gemini/oauth_creds.json` (personal OAuth login) — the usual path.
-3. `~/.config/agy/credentials.json` (some CI/headless setups) — mounted when present.
-
-The host `~/.gemini` (and `~/.config/agy`, if present) are mounted **read-only** and mirrored into writable copies inside the container; agy refreshes its token in the in-container copy only, so **nothing is ever written back to the host**. If no credentials are found, `agy` falls back to prompting for login inside the container.
+Alternatively set **`ANTIGRAVITY_API_KEY`** (a Google AI Studio key) for non-interactive auth.
 
 Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
 
@@ -118,6 +116,7 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 | `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
 | `bun run build:x64` | Compile for macOS x64 (Intel) |
 | `bun run prune:brew` | Delete the shared persistent Homebrew volume (both providers) |
+| `bun run prune:agy` | Delete the Antigravity auth volumes (forces a fresh login) |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
 | `bun run docker:build:claude` / `docker:build:antigravity` | Build a provider image locally |

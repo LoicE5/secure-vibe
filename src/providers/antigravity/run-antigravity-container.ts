@@ -1,6 +1,6 @@
 import { access } from "fs/promises"
 import type { Runtime, GitIdentity } from "../../types"
-import { AGY_CONFIG_DIR, GEMINI_DIR } from "../../constants"
+import { GEMINI_DIR } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { resolveAntigravityCredentials } from "./credentials"
@@ -15,27 +15,22 @@ export interface RunAntigravityContainerOptions {
 }
 
 /**
- * Mounts ~/.gemini (and ~/.config/agy when present) read-only, injects an optional
- * ANTIGRAVITY_API_KEY, and delegates the spawn. entrypoint.ts handles the rest.
+ * Injects the host agy token (entrypoint.ts writes it to the container's token file
+ * so agy starts logged in) and mounts ~/.gemini read-only for settings, then
+ * delegates the spawn. Nothing is written back to the host.
  */
 export async function runAntigravityContainer(options: RunAntigravityContainerOptions): Promise<number> {
-  const credentials = await resolveAntigravityCredentials()
+  const creds = await resolveAntigravityCredentials()
 
   const extraEnv: Record<string, string> = {}
-  if(credentials.apiKey) {
-    extraEnv.ANTIGRAVITY_API_KEY = credentials.apiKey
-  }
+  if(creds.token) extraEnv.AGY_OAUTH_TOKEN = creds.token
+  if(creds.apiKey) extraEnv.ANTIGRAVITY_API_KEY = creds.apiKey
 
-  // Skip mounts whose host path is missing — `-v` would create an empty root-owned dir.
-  const candidateMounts: ReadonlyArray<ExtraMount> = [
-    [AGY_CONFIG_DIR, "/home/viber/.config/agy-host", "ro"],
-    [GEMINI_DIR, "/home/viber/.gemini-host", "ro"]
-  ]
+  // Mount ~/.gemini read-only for settings/context (skipped if missing — `-v` would
+  // otherwise create an empty root-owned dir). The token comes via env, not this mount.
   const extraMounts: ExtraMount[] = []
-  for(const mount of candidateMounts) {
-    const hostExists = await access(mount[0]).then(() => true).catch(() => false)
-    if(hostExists) extraMounts.push(mount)
-  }
+  const geminiExists = await access(GEMINI_DIR).then(() => true).catch(() => false)
+  if(geminiExists) extraMounts.push([GEMINI_DIR, "/home/viber/.gemini-host", "ro"])
 
   return spawnContainer({
     runtime: options.runtime,

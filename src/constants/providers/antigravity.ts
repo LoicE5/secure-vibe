@@ -1,17 +1,17 @@
 import { homedir } from "os"
 import { join } from "path"
 
-/** Host's ~/.gemini — agy's OAuth token, account, settings, and antigravity-cli state. Mounted read-only. */
+/** Host's ~/.gemini — agy settings/state. Mounted read-only, mirrored in. */
 export const GEMINI_DIR = join(homedir(), ".gemini")
 
-/** Portable plaintext OAuth token from a personal login (no keychain, macOS and Linux alike). */
-export const GEMINI_OAUTH_CREDS = join(GEMINI_DIR, "oauth_creds.json")
+/**
+ * agy's token file when it runs in a container (it detects /.dockerenv and skips the
+ * keyring). The entrypoint writes the host token here so agy starts logged in.
+ */
+export const AGY_TOKEN_REL_PATH = "antigravity-cli/antigravity-oauth-token"
 
-/** Host's ~/.config/agy — only some CI/headless setups use it; mounted when present. */
-export const AGY_CONFIG_DIR = join(homedir(), ".config", "agy")
-
-/** Token some CI/headless setups cache (see AGY_CONFIG_DIR). */
-export const AGY_CREDENTIALS_JSON = join(AGY_CONFIG_DIR, "credentials.json")
+/** Same file on a Linux host that already ran agy headless — read directly if present. */
+export const AGY_TOKEN_HOST_FILE = join(GEMINI_DIR, AGY_TOKEN_REL_PATH)
 
 /** Container image, published to GHCR (nested paths allowed, unlike Docker Hub). */
 export const ANTIGRAVITY_IMAGE_NAME = "ghcr.io/loice5/secure-vibe/antigravity:latest"

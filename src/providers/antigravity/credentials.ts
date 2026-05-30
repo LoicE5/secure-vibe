@@ -1,35 +1,65 @@
-import { access, constants } from "fs/promises"
-import { GEMINI_OAUTH_CREDS, AGY_CREDENTIALS_JSON } from "../../constants"
+import { access, constants, readFile } from "fs/promises"
+import { $ } from "bun"
+import { AGY_TOKEN_HOST_FILE } from "../../constants"
 
 export interface AntigravityCredentials {
-  /** Google AI Studio key, injected as ANTIGRAVITY_API_KEY. */
+  /** agy OAuth token JSON — entrypoint writes it to the container's token file. */
+  token?: string
+  /** ANTIGRAVITY_API_KEY passthrough (alternative to the OAuth token). */
   apiKey?: string
 }
 
-const exists = (path: string): Promise<boolean> =>
-  access(path, constants.R_OK).then(() => true).catch(() => false)
+/** macOS Keychain (service, account) pairs agy may store its token under, most likely first. */
+const KEYCHAIN_CANDIDATES: ReadonlyArray<readonly [service: string, account: string]> = [
+  ["gemini", "antigravity"]
+]
 
 /**
- * Picks the auth method: ANTIGRAVITY_API_KEY, else the mounted ~/.gemini/oauth_creds.json
- * (or ~/.config/agy/credentials.json). Never exits — agy can log in inside the container.
+ * Resolves the host's agy token to inject; the entrypoint writes it to the file agy
+ * reads in container mode so the session starts logged in — same idea as Claude.
+ * Prefers a token file at ~/.gemini/antigravity-cli/antigravity-oauth-token (drop one
+ * there to skip Keychain prompts), then the macOS Keychain.
  */
 export async function resolveAntigravityCredentials(): Promise<AntigravityCredentials> {
-  const apiKey = process.env.ANTIGRAVITY_API_KEY
-  if(apiKey) {
-    console.info("  Authenticating with ANTIGRAVITY_API_KEY from the environment.")
-    return { apiKey }
+  const out: AntigravityCredentials = {}
+  if(process.env.ANTIGRAVITY_API_KEY) out.apiKey = process.env.ANTIGRAVITY_API_KEY
+
+  // Token file on the host (also where a container login can be copied back to).
+  const fileExists = await access(AGY_TOKEN_HOST_FILE, constants.R_OK).then(() => true).catch(() => false)
+  if(fileExists) {
+    out.token = (await readFile(AGY_TOKEN_HOST_FILE, "utf-8")).trim()
+    console.info("  Read agy token from ~/.gemini/antigravity-cli/antigravity-oauth-token.")
+    return out
   }
 
-  if(await exists(GEMINI_OAUTH_CREDS)) {
-    console.info("  Found ~/.gemini/oauth_creds.json — your session will be mounted in.")
-    return {}
+  // macOS: read agy's token from the Keychain.
+  if(process.platform === "darwin") {
+    for(const [service, account] of KEYCHAIN_CANDIDATES) {
+      const token = await readKeychain(service, account)
+      if(token) {
+        console.info(`  Read agy token from the macOS Keychain (${service}/${account}).`)
+        out.token = token
+        return out
+      }
+    }
   }
 
-  if(await exists(AGY_CREDENTIALS_JSON)) {
-    console.info("  Found ~/.config/agy/credentials.json — it will be mounted in.")
-    return {}
+  if(!out.apiKey) {
+    console.warn("  No agy token found (file/Keychain) and no ANTIGRAVITY_API_KEY — agy will prompt for login.")
   }
+  return out
+}
 
-  console.warn("  No host credentials found. Run `agy` to log in or set ANTIGRAVITY_API_KEY; otherwise agy will prompt inside the container.")
-  return {}
+/** go-keyring base64-encodes stored values with this prefix; agy's token file wants the raw JSON. */
+const KEYRING_BASE64_PREFIX = "go-keyring-base64:"
+
+/** Returns the keychain secret for service/account (decoded to raw JSON), or null if absent. */
+async function readKeychain(service: string, account: string): Promise<string | null> {
+  const value = await $`security find-generic-password -s ${service} -a ${account} -w`
+    .text().then(s => s.trim()).catch(() => "")
+  if(!value) return null
+  if(value.startsWith(KEYRING_BASE64_PREFIX)) {
+    return Buffer.from(value.slice(KEYRING_BASE64_PREFIX.length), "base64").toString("utf-8")
+  }
+  return value
 }
