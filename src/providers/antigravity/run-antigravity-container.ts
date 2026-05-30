@@ -1,0 +1,44 @@
+import { access } from "fs/promises"
+import type { Runtime, GitIdentity } from "../../types"
+import { GEMINI_DIR } from "../../constants"
+import { spawnContainer } from "../../utils/container"
+import type { ExtraMount } from "../../utils/container"
+import { resolveAntigravityCredentials } from "./credentials"
+import { ANTIGRAVITY_PROVIDER_SPEC } from "./spec"
+
+/** Options the orchestrator passes to runAntigravityContainer. */
+export interface RunAntigravityContainerOptions {
+  runtime: Runtime
+  workDir: string
+  command: string | null
+  gitConfig: GitIdentity | null
+}
+
+/**
+ * Injects the host agy token (entrypoint.ts writes it to the container's token file
+ * so agy starts logged in) and mounts ~/.gemini read-only for settings, then
+ * delegates the spawn. Nothing is written back to the host.
+ */
+export async function runAntigravityContainer(options: RunAntigravityContainerOptions): Promise<number> {
+  const creds = await resolveAntigravityCredentials()
+
+  const extraEnv: Record<string, string> = {}
+  if(creds.token) extraEnv.AGY_OAUTH_TOKEN = creds.token
+  if(creds.apiKey) extraEnv.ANTIGRAVITY_API_KEY = creds.apiKey
+
+  // Mount ~/.gemini read-only for settings/context (skipped if missing — `-v` would
+  // otherwise create an empty root-owned dir). The token comes via env, not this mount.
+  const extraMounts: ExtraMount[] = []
+  const geminiExists = await access(GEMINI_DIR).then(() => true).catch(() => false)
+  if(geminiExists) extraMounts.push([GEMINI_DIR, "/home/viber/.gemini-host", "ro"])
+
+  return spawnContainer({
+    runtime: options.runtime,
+    spec: ANTIGRAVITY_PROVIDER_SPEC,
+    workDir: options.workDir,
+    gitConfig: options.gitConfig,
+    command: options.command,
+    extraEnv,
+    extraMounts
+  })
+}

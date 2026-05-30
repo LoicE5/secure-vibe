@@ -23,6 +23,9 @@ jobs:
           - provider: claude
             image: secure-vibe/claude
             dockerfile: docker/claude.dockerfile
+          - provider: antigravity
+            image: secure-vibe/antigravity
+            dockerfile: docker/antigravity.dockerfile
 
     steps:
       - name: Checkout

@@ -9,3 +9,6 @@ PROMPT.md
 .DS_Store
 PROGRESS.md
 PLAN.md
+temp/
+.antigravitycli
+.claude/*.lock
