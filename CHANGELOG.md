@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0
+
+- Inject a sandbox system prompt into Claude on container start (via a `/home/viber/bin/claude` wrapper that adds `--dangerously-skip-permissions` and `--append-system-prompt`), so the flags apply in every execution path — interactive shell, auto-start, and `--command`
+- Pin the container user to a fixed UID (`1000`) instead of deriving it from the host UID; the startup check warns when an existing `secure-vibe-brew` volume was seeded under a different UID. **Upgrade note:** if `brew` reports `Cellar is not writable`, run `docker volume rm secure-vibe-brew` once to reset it
+
 ## 3.0.0
 
 - Restructure into a pluggable multi-provider architecture (per-provider modules, entrypoints, and Dockerfiles); Claude Code remains the default. Existing flags and env vars are unchanged
