@@ -29,6 +29,16 @@ if(!brewReady) {
   console.info("  [entrypoint] First run: seeding brew volume from image (this may take a minute)…")
   await $`cp -a /opt/linuxbrew-seed/. /home/linuxbrew/`.nothrow()
   console.info("  [entrypoint] Brew volume ready.")
+} else {
+  // The brew volume persists and stores real numeric UID ownership. If it was
+  // seeded by an image with a different UID (e.g. an older build), brew can't
+  // write it and there's no root at runtime to repair it. Detect that early and
+  // tell the user exactly how to recover instead of letting brew fail cryptically.
+  const { exitCode } = await $`test -w /home/linuxbrew/.linuxbrew/Cellar`.nothrow().quiet()
+  if(exitCode !== 0) {
+    console.warn("  [entrypoint] ⚠ The brew volume is owned by a different UID — brew will fail to install packages.")
+    console.warn("  [entrypoint]   Reset it once from the host with: docker volume rm secure-vibe-brew")
+  }
 }
 
 const CLAUDE_DIR = "/home/viber/.claude"

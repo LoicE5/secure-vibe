@@ -1,19 +1,16 @@
 import { mkdir } from "fs/promises"
-import { userInfo } from "os"
 import { dirname } from "path"
 import { $ } from "bun"
 import { PROJECT_DIR } from "../constants"
 import type { Runtime, ProviderSpec } from "../types"
 
-/** Builds `spec.imageName` from `spec.dockerfilePath` with the host user's UID/GID. */
+/**
+ * Builds `spec.imageName` from `spec.dockerfilePath`.
+ */
 async function buildImage(runtime: Runtime, spec: ProviderSpec, noCache: boolean): Promise<void> {
-  const { uid, gid } = userInfo()
-
   const buildArgs = [
     runtime, "build",
     "-f", spec.dockerfilePath,
-    "--build-arg", `UID=${uid}`,
-    "--build-arg", `GID=${gid}`,
     "-t", spec.imageName
   ]
   if(noCache) buildArgs.push("--no-cache")

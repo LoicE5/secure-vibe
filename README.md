@@ -4,6 +4,8 @@ Run Claude Code inside an isolated Docker or Podman container. Your credentials 
 
 The container comes with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let claude run your code without sudo access, fetching the needed dependencies on the fly.
 
+> **Upgrading from an older image?** The container user is now pinned to a fixed UID (`1000`); older images derived it from your host user. If `brew` reports `Cellar is not writable`, your brew volume was seeded under the old UID — reset it once with `docker volume rm secure-vibe-brew` (it re-seeds automatically on the next run).
+
 > The underlying docker image is based on Ubuntu and is hardened. The user does not have root access. All packages are handled rootless via brew.
 
 ## Requirements

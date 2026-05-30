@@ -11,14 +11,9 @@ RUN apt-get update \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home
+# Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home.
 RUN usermod -l viber -d /home/viber -m ubuntu \
     && groupmod -n viber ubuntu
-
-# Match the host user's UID/GID so mounted volume files are accessible
-ARG UID=1000
-ARG GID=1000
-RUN usermod -u $UID viber && groupmod -o -g $GID viber
 
 # Pre-create the Homebrew prefix directory and hand it to viber
 # (the install script targets /home/linuxbrew/.linuxbrew on Linux)
