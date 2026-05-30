@@ -11,14 +11,9 @@ RUN apt-get update \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home
+# Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home.
 RUN usermod -l viber -d /home/viber -m ubuntu \
     && groupmod -n viber ubuntu
-
-# Match the host user's UID/GID so mounted volume files are accessible
-ARG UID=1000
-ARG GID=1000
-RUN usermod -u $UID viber && groupmod -o -g $GID viber
 
 # Pre-create the Homebrew prefix directory and hand it to viber
 # (the install script targets /home/linuxbrew/.linuxbrew on Linux)
@@ -51,20 +46,33 @@ RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
 
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-ENV PATH="/home/viber/.local/bin:${PATH}"
+COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
 
-# Aliases + auto-start appended to .bashrc.
-# claude-default hits the real binary via `command`; claude always passes --dangerously-skip-permissions.
-# The SHLVL guard ensures auto-start fires only on the outermost bash, not on sub-shells.
+# /home/viber/bin sits ahead of ~/.local/bin so the wrapper below shadows the
+# real claude binary on PATH — covers interactive shell, auto-start, AND the
+# explicit-command entrypoint path (which never sources .bashrc).
+RUN mkdir -p /home/viber/bin
+ENV PATH="/home/viber/bin:/home/viber/.local/bin:${PATH}"
+
+RUN printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'exec /home/viber/.local/bin/claude \' \
+    '  --dangerously-skip-permissions \' \
+    '  --append-system-prompt "$(cat /home/viber/.secure-vibe-sandbox.md)" \' \
+    '  "$@"' \
+    > /home/viber/bin/claude && chmod +x /home/viber/bin/claude
+
+# Auto-start + escape hatch appended to .bashrc. `claude` resolves through PATH
+# to the wrapper above; no alias needed. The SHLVL guard ensures auto-start
+# fires only on the outermost bash, not on sub-shells.
 RUN printf '%s\n' \
     '' \
-    '# secure-vibe: claude aliases' \
-    "alias claude-default='command claude'" \
-    "alias claude='claude --dangerously-skip-permissions'" \
+    '# secure-vibe: claude escape hatch (raw binary, no injected flags)' \
+    "alias claude-default='/home/viber/.local/bin/claude'" \
     '' \
     '# secure-vibe: auto-start claude on first shell' \
     'if [[ $SHLVL -eq 1 && -z "${SECURE_VIBE_EXPLICIT_CMD:-}" ]]; then' \
-    '  claude --dangerously-skip-permissions || true' \
+    '  claude || true' \
     '  echo ""' \
     "  echo \"Claude exited. Type 'claude' to restart.\"" \
     'fi' \
