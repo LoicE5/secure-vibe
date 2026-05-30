@@ -14,7 +14,7 @@ import { CLEAN_EXIT_CODES } from "./constants"
 // ── Dynamic shell completion ────────────────────────────────────────────────
 // The installed shell stub calls `secure-vibe __complete <words…>` on each TAB.
 // Handle it before anything else (no image build, no prompts) and exit.
-if(process.argv[2] === "__complete") {
+if(process.argv.at(2) === "__complete") {
   runCompletion(process.argv.slice(3))
   process.exit(0)
 }

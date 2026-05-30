@@ -1,5 +1,5 @@
 import type { ParsedArgs, ProviderId } from "../types"
-import type { ValueFlag } from "../constants"
+import type { BooleanFlag, ValueFlag } from "../constants"
 import { FLAGS, PROVIDER_FLAGS } from "../constants"
 
 /**
@@ -18,27 +18,27 @@ export function parseArgs(): ParsedArgs {
   let provider: ProviderId | null = null
 
   const consumed = new Set<number>()
-  for(const [index, arg] of argv.entries()) {
+  for(const [index, argument] of argv.entries()) {
     if(consumed.has(index)) continue
 
-    const boolFlag = FLAGS.find(f => f.kind === "boolean" && f.name === arg)
-    if(boolFlag) {
-      booleans[boolFlag.key as keyof typeof booleans] = true
+    const booleanFlag = FLAGS.find((flag): flag is BooleanFlag => flag.kind === "boolean" && flag.name === argument)
+    if(booleanFlag) {
+      booleans[booleanFlag.key] = true
       continue
     }
 
-    if(PROVIDER_FLAGS[arg]) {
-      provider = PROVIDER_FLAGS[arg]!
+    if(PROVIDER_FLAGS[argument]) {
+      provider = PROVIDER_FLAGS[argument]!
       continue
     }
 
     // Match a value flag in either `--flag=value` or `--flag value` form.
     const valueFlag = FLAGS.find(
-      (f): f is ValueFlag => f.kind === "value" && (arg === f.name || arg.startsWith(`${f.name}=`))
+      (flag): flag is ValueFlag => flag.kind === "value" && (argument === flag.name || argument.startsWith(`${flag.name}=`))
     )
     if(valueFlag) {
-      if(arg.startsWith(`${valueFlag.name}=`)) {
-        values[valueFlag.key] = arg.slice(valueFlag.name.length + 1)
+      if(argument.startsWith(`${valueFlag.name}=`)) {
+        values[valueFlag.key] = argument.slice(valueFlag.name.length + 1)
       } else if(index + 1 < argv.length) {
         values[valueFlag.key] = argv.at(index + 1)!
         consumed.add(index + 1)
@@ -46,7 +46,7 @@ export function parseArgs(): ParsedArgs {
       continue
     }
 
-    if(!arg.startsWith("-")) positionals.push(arg)
+    if(!argument.startsWith("-")) positionals.push(argument)
     // Unknown flags are ignored
   }
 

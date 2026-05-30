@@ -40,15 +40,15 @@ function stripBlock(content: string): string {
   // Drop a legacy "# secure-vibe alias\nalias secure-vibe=…" block — left in place,
   // the alias would shadow the new function in zsh and re-break completion.
   const lines = content.split("\n")
-  const kept: string[] = []
-  for(let i = 0; i < lines.length; i++) {
-    if(lines[i]?.trim() === LEGACY_MARKER) {
-      if(lines[i + 1]?.includes(NAME)) i++
+  const keptLines: string[] = []
+  for(let index = 0; index < lines.length; index++) {
+    if(lines.at(index)?.trim() === LEGACY_MARKER) {
+      if(lines.at(index + 1)?.includes(NAME)) index++
       continue
     }
-    kept.push(lines[i]!)
+    keptLines.push(lines.at(index)!)
   }
-  return kept.join("\n")
+  return keptLines.join("\n")
 }
 
 function addAlias(aliasFile: string, rcFile: string): void {
