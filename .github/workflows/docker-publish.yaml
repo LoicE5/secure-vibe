@@ -59,6 +59,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           no-cache: true
           push: true
+          # Inline provenance/SBOM attach an extra image-index entry that shows up
+          # as an `unknown/unknown` platform in the published manifest list (#21).
+          # The separate attest-build-provenance step keeps provenance in GitHub.
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
