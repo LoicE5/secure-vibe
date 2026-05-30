@@ -5,9 +5,10 @@
  *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
  *   2. Mirror the read-only ~/.gemini-host mount into a writable copy, then write
  *      the host agy token ($AGY_OAUTH_TOKEN) to the file agy reads in a container.
- *   3. Whitelist the workspace in ~/.gemini/trustedFolders.json so agy skips its
- *      "Do you trust this folder?" dialog (--dangerously-skip-permissions only
- *      covers tool actions, not folder trust). Merged so host entries survive.
+ *   3. Whitelist the workspace by adding it to "trustedWorkspaces" in
+ *      ~/.gemini/antigravity-cli/settings.json so agy skips its "Do you trust
+ *      this folder?" dialog (--dangerously-skip-permissions only covers tool
+ *      actions, not folder trust). Merged so host entries survive.
  *   4. Inject the sandbox prompt into ~/.gemini/GEMINI.md (agy has no
  *      --append-system-prompt flag; the global GEMINI.md is prepended to every
  *      prompt). Marker-guarded so it's idempotent and keeps any existing context.
@@ -72,24 +73,30 @@ if(agyToken) {
 }
 
 // Whitelist the workspace so agy skips its "Do you trust this folder?" dialog
-// (the wrapper's --dangerously-skip-permissions only auto-approves tool actions).
-// Merge into any mirrored host trustedFolders.json so the user's other entries survive.
+// (the wrapper's --dangerously-skip-permissions only auto-approves tool actions,
+// not folder trust). agy stores trust as a plain array of absolute paths under
+// "trustedWorkspaces" in ~/.gemini/antigravity-cli/settings.json. Merge into any
+// mirrored host settings so the user's other trusted paths survive.
 const APP_DIR = "/home/viber/app"
-const trustedPath = `${GEMINI_DIR}/trustedFolders.json`
-let trusted: Record<string, string> = {}
-const rawTrusted = await readFile(trustedPath, "utf-8").catch(() => "")
-if(rawTrusted) {
+const agySettingsDir = `${GEMINI_DIR}/antigravity-cli`
+const agySettingsPath = `${agySettingsDir}/settings.json`
+let agySettings: Record<string, unknown> = {}
+const rawAgySettings = await readFile(agySettingsPath, "utf-8").catch(() => "")
+if(rawAgySettings) {
   try {
-    trusted = JSON.parse(rawTrusted) as Record<string, string>
+    agySettings = JSON.parse(rawAgySettings) as Record<string, unknown>
   } catch(parseError: unknown) {
-    console.warn("  [entrypoint] trustedFolders.json was not valid JSON; recreating it:", parseError)
-    trusted = {}
+    console.warn("  [entrypoint] antigravity-cli/settings.json was not valid JSON; recreating it:", parseError)
+    agySettings = {}
   }
 }
-if(!trusted[APP_DIR]) {
-  trusted[APP_DIR] = "TRUST_FOLDER"
-  await mkdir(GEMINI_DIR, { recursive: true })
-  await writeFile(trustedPath, JSON.stringify(trusted), { mode: 0o600 })
+const trustedRaw = agySettings.trustedWorkspaces
+const trustedWorkspaces = Array.isArray(trustedRaw) ? trustedRaw as string[] : []
+if(!trustedWorkspaces.includes(APP_DIR)) {
+  trustedWorkspaces.push(APP_DIR)
+  agySettings.trustedWorkspaces = trustedWorkspaces
+  await mkdir(agySettingsDir, { recursive: true })
+  await writeFile(agySettingsPath, JSON.stringify(agySettings, null, 2), { mode: 0o600 })
 }
 
 // agy has no --append-system-prompt flag, so the sandbox prompt goes into the
