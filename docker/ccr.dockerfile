@@ -66,10 +66,13 @@ ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PATH}"
 RUN printf '#!/usr/bin/env bash\nexec bun "$@"\n' > /home/viber/bin/node \
     && chmod +x /home/viber/bin/node
 
-# claude wrapper: `ccr code` spawns `claude` via PATH, so it resolves here and inherits
-# --dangerously-skip-permissions + the sandbox prompt (the point of secure-vibe).
+# claude wrapper: `ccr code` spawns `claude` and inherits --dangerously-skip-permissions
+# + the sandbox prompt (the point of secure-vibe). CCR resolves the binary from
+# CLAUDE_PATH (then $PATH, then "claude"), so pin it to the wrapper explicitly — this
+# guarantees the bypass wrapper is used regardless of PATH ordering inside CCR's shell.
 COPY --chown=viber:viber src/assets/claude-wrapper.sh /home/viber/bin/claude
 RUN chmod +x /home/viber/bin/claude
+ENV CLAUDE_PATH="/home/viber/bin/claude"
 
 # ccr wrapper: routes `ccr` → `ccr code` via bun, calling the real ccr by absolute path.
 COPY --chown=viber:viber src/assets/ccr-wrapper.sh /home/viber/bin/ccr

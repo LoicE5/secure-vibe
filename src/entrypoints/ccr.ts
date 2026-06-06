@@ -7,8 +7,10 @@
  *      ~/.claude-code-router (CCR writes logs/state there at runtime).
  *   3. If no config exists, scaffold a minimal starter config.json (with an
  *      example Ollama provider via host.docker.internal) and print a hint.
- *      If one was mirrored, normalise it: force NON_INTERACTIVE_MODE and pin
- *      HOST to 127.0.0.1 when no APIKEY is set — the server is never exposed.
+ *      If one was mirrored, pin HOST to 127.0.0.1 when no APIKEY is set so the
+ *      router is never bound wide. NON_INTERACTIVE_MODE is left to the user:
+ *      forcing it would pipe+close claude's stdin and set TERM=dumb, breaking
+ *      the interactive Claude Code session that is secure-vibe's main mode.
  *   4. Optionally materialise host Anthropic credentials from $CLAUDE_CREDENTIALS
  *      (set by runCcrContainer) so a CCR route back to Anthropic starts logged in.
  *      Absent is fine — CCR may route entirely off-Anthropic.
@@ -72,11 +74,10 @@ await mirror(CCR_HOST_DIR, CCR_DIR)
 
 const configExists = await access(CCR_CONFIG_PATH).then(() => true).catch(() => false)
 if(!configExists) {
-  // Scaffold a minimal, non-interactive starter. No APIKEY → CCR binds 127.0.0.1.
+  // Scaffold a minimal starter. No APIKEY → CCR binds 127.0.0.1.
   // The example provider targets a host-machine Ollama (reachable only with `--local`).
   const scaffold = {
     _comment: "secure-vibe scaffolded this starter. Edit the host file at ~/.claude-code-router/config.json and re-run. Only $VARs referenced here are forwarded into the container (from your project .env, then host env).",
-    NON_INTERACTIVE_MODE: true,
     HOST: "127.0.0.1",
     PORT: 3456,
     Providers: [
@@ -96,15 +97,16 @@ if(!configExists) {
   console.info("  [entrypoint]   Edit it on the HOST (mounted read-only here) to add real providers/keys, then re-run.")
   console.info("  [entrypoint]   The example 'ollama' provider needs `secure-vibe --ccr --local` to reach a host model.")
 } else {
-  // Normalise the mirrored config: never let CCR prompt, and never expose the server.
+  // Pin HOST to loopback when no APIKEY (mirrors CCR's own guarantee) so a stray
+  // HOST:0.0.0.0 in the user's config can't bind wide. We deliberately do NOT touch
+  // NON_INTERACTIVE_MODE — forcing it would break the interactive Claude Code session.
   try {
     const raw = await readFile(CCR_CONFIG_PATH, "utf-8")
     const config = JSON.parse(raw) as Record<string, unknown>
-    config.NON_INTERACTIVE_MODE = true
-    // CCR only forces 127.0.0.1 itself when APIKEY is unset; mirror that guarantee
-    // explicitly so a stray HOST:0.0.0.0 in the user's config can't bind wide here.
-    if(!config.APIKEY) config.HOST = "127.0.0.1"
-    await writeFile(CCR_CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 })
+    if(!config.APIKEY) {
+      config.HOST = "127.0.0.1"
+      await writeFile(CCR_CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 })
+    }
   } catch(parseError: unknown) {
     console.warn("  [entrypoint] ⚠ ~/.claude-code-router/config.json was not valid JSON; leaving it as-is:", parseError)
   }
