@@ -10,9 +10,10 @@
  *      claude's stdin and set TERM=dumb, breaking the interactive Claude Code session
  *      that is secure-vibe's main mode. (If somehow no config was mounted — the host
  *      runner normally scaffolds a persistent one — fall back to an ephemeral starter.)
- *   4. Optionally materialise host Anthropic credentials from $CLAUDE_CREDENTIALS
- *      (set by runCcrContainer) so a CCR route back to Anthropic starts logged in.
- *      Absent is fine — CCR may route entirely off-Anthropic.
+ *   4. Pre-accept Claude Code's first-run flags (onboarding, trust, bypass) in
+ *      ~/.claude.json so it launches straight into a session with no wizard — done
+ *      unconditionally since CCR users usually have no Anthropic account. No OAuth is
+ *      injected (it could make Claude bypass CCR and hit Anthropic directly).
  *   5. Apply host git identity from $GIT_USER_NAME / $GIT_USER_EMAIL.
  *   6. Ignore SIGINT at PID 1 so Ctrl+C kills only the foreground job (ccr/claude)
  *      without exiting the shell.
@@ -112,41 +113,35 @@ if(!configExists) {
   }
 }
 
-// Optionally materialise host Anthropic credentials so a route back to Anthropic
-// starts pre-authenticated. CLAUDE_CREDENTIALS carries a merged JSON (claudeAiOauth +
-// onboarding metadata). Absent is fine — CCR may route entirely off-Anthropic.
-const credentials = process.env.CLAUDE_CREDENTIALS
-if(credentials) {
-  const CLAUDE_DIR = `${HOME_DIR}/.claude`
-  await mkdir(CLAUDE_DIR, { recursive: true })
+// Pre-accept Claude Code's first-run flags so it launches straight into a session
+// instead of the onboarding wizard (theme picker, trust-folder, bypass warning).
+// CCR users typically have NO Anthropic account — CCR supplies the endpoint and token —
+// so we seed these UNCONDITIONALLY (the claude provider only does it alongside creds).
+//
+// We deliberately do NOT inject Claude.ai OAuth here: a real subscription token can make
+// Claude Code talk to Anthropic directly and ignore CCR's local endpoint, defeating routing.
+const CLAUDE_DIR = `${HOME_DIR}/.claude`
+const CLAUDE_JSON = `${HOME_DIR}/.claude.json`
+await mkdir(CLAUDE_DIR, { recursive: true })
 
-  let parsed: Record<string, unknown>
-  try {
-    parsed = JSON.parse(credentials) as Record<string, unknown>
-  } catch(parseError: unknown) {
-    console.warn("  [entrypoint] CLAUDE_CREDENTIALS was not valid JSON; skipping Anthropic pre-auth:", parseError)
-    parsed = {}
-  }
-
-  if(Object.keys(parsed).length > 0) {
-    if(!parsed.hasCompletedOnboarding) parsed.hasCompletedOnboarding = true
-    if(!parsed.bypassPermissionsModeAccepted) parsed.bypassPermissionsModeAccepted = true
-
-    const APP_DIR = "/home/viber/app"
-    if(!parsed.projects) parsed.projects = {}
-    const projects = parsed.projects as Record<string, Record<string, unknown>>
-    if(!projects[APP_DIR]) projects[APP_DIR] = {}
-    if(!projects[APP_DIR].hasTrustDialogAccepted) projects[APP_DIR].hasTrustDialogAccepted = true
-
-    await writeFile(`${HOME_DIR}/.claude.json`, JSON.stringify(parsed), { mode: 0o600 })
-
-    const authOnly = JSON.stringify({
-      claudeAiOauth: parsed.claudeAiOauth,
-      organizationUuid: parsed.organizationUuid
-    })
-    await writeFile(`${CLAUDE_DIR}/.credentials.json`, authOnly, { mode: 0o600 })
-  }
+let claudeJson: Record<string, unknown> = {}
+try {
+  claudeJson = JSON.parse(await readFile(CLAUDE_JSON, "utf-8")) as Record<string, unknown>
+} catch {
+  claudeJson = {}
 }
+
+claudeJson.hasCompletedOnboarding = true
+claudeJson.bypassPermissionsModeAccepted = true
+if(!claudeJson.theme) claudeJson.theme = "dark"
+
+const APP_DIR = "/home/viber/app"
+if(!claudeJson.projects) claudeJson.projects = {}
+const projects = claudeJson.projects as Record<string, Record<string, unknown>>
+if(!projects[APP_DIR]) projects[APP_DIR] = {}
+projects[APP_DIR].hasTrustDialogAccepted = true
+
+await writeFile(CLAUDE_JSON, JSON.stringify(claudeJson), { mode: 0o600 })
 
 // Apply host git identity so commits made inside the container are attributed correctly.
 const gitUserName = process.env.GIT_USER_NAME

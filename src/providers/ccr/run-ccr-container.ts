@@ -4,7 +4,6 @@ import { CCR_CONFIG_DIR, CCR_CONFIG_PATH } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { loadDotEnv, extractVarTokens } from "../../utils/env-file"
-import { resolveCcrAnthropicCredentials } from "./credentials"
 import { CCR_PROVIDER_SPEC } from "./spec"
 
 /**
@@ -96,10 +95,9 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
     console.warn(`  ⚠ Unresolved CCR config var(s): ${missing.join(", ")}. CCR will substitute empty values — set them in .env or your shell.`)
   }
 
-  // Optionally reuse host Anthropic creds so a route back to Anthropic starts logged in.
-  // Never required: CCR may route entirely off-Anthropic.
-  const creds = await resolveCcrAnthropicCredentials()
-  if(creds) extraEnv.CLAUDE_CREDENTIALS = creds
+  // Note: we do NOT inject Anthropic credentials. CCR talks to its providers using the
+  // keys in its own config; Claude Code only needs CCR's local endpoint + dummy token.
+  // A real Claude.ai subscription token here could make Claude bypass CCR entirely.
 
   const extraArgs: string[] = []
   if(options.local) {
@@ -107,8 +105,8 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
     console.info("  --local: adding host-gateway DNS entry (reach host models via http://host.docker.internal:<port>).")
   }
 
-  // Mount the host config dir read-only (skipped if missing — `-v` would otherwise
-  // create an empty root-owned dir). The entrypoint mirrors it writable / scaffolds.
+  // Mount the host config dir read-only (always present — ensureHostConfig created it
+  // if absent). The entrypoint mirrors it into a writable copy inside the container.
   const extraMounts: ExtraMount[] = []
   const configDirExists = await access(CCR_CONFIG_DIR).then(() => true).catch(() => false)
   if(configDirExists) extraMounts.push([CCR_CONFIG_DIR, "/home/viber/.claude-code-router-host", "ro"])
