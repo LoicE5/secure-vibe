@@ -5,12 +5,11 @@
  *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
  *   2. Mirror the read-only ~/.claude-code-router-host mount into a writable
  *      ~/.claude-code-router (CCR writes logs/state there at runtime).
- *   3. If no config exists, scaffold a minimal starter config.json (with an
- *      example Ollama provider via host.docker.internal) and print a hint.
- *      If one was mirrored, pin HOST to 127.0.0.1 when no APIKEY is set so the
- *      router is never bound wide. NON_INTERACTIVE_MODE is left to the user:
- *      forcing it would pipe+close claude's stdin and set TERM=dumb, breaking
- *      the interactive Claude Code session that is secure-vibe's main mode.
+ *   3. Pin HOST to 127.0.0.1 when no APIKEY is set so the router is never bound
+ *      wide. NON_INTERACTIVE_MODE is left to the user: forcing it would pipe+close
+ *      claude's stdin and set TERM=dumb, breaking the interactive Claude Code session
+ *      that is secure-vibe's main mode. (If somehow no config was mounted — the host
+ *      runner normally scaffolds a persistent one — fall back to an ephemeral starter.)
  *   4. Optionally materialise host Anthropic credentials from $CLAUDE_CREDENTIALS
  *      (set by runCcrContainer) so a CCR route back to Anthropic starts logged in.
  *      Absent is fine — CCR may route entirely off-Anthropic.
@@ -93,9 +92,10 @@ if(!configExists) {
     }
   }
   await writeFile(CCR_CONFIG_PATH, JSON.stringify(scaffold, null, 2), { mode: 0o600 })
-  console.info("  [entrypoint] No CCR config found — wrote a starter ~/.claude-code-router/config.json.")
-  console.info("  [entrypoint]   Edit it on the HOST (mounted read-only here) to add real providers/keys, then re-run.")
-  console.info("  [entrypoint]   The example 'ollama' provider needs `secure-vibe --ccr --local` to reach a host model.")
+  // Fallback only: the host runner normally scaffolds a persistent config before spawn.
+  // Reaching here means none was mounted, so this copy is EPHEMERAL (lost on exit).
+  console.warn("  [entrypoint] ⚠ No CCR config was mounted — using an ephemeral in-container starter (lost on exit).")
+  console.warn("  [entrypoint]   Create ~/.claude-code-router/config.json on the HOST (or re-run from the host) to persist it.")
 } else {
   // Pin HOST to loopback when no APIKEY (mirrors CCR's own guarantee) so a stray
   // HOST:0.0.0.0 in the user's config can't bind wide. We deliberately do NOT touch
