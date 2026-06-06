@@ -12,6 +12,8 @@ export interface SpawnContainerOptions {
   command: string | null
   extraEnv?: Record<string, string>
   extraMounts?: ReadonlyArray<ExtraMount>
+  /** Extra `docker run` flags (e.g. `--add-host=…`) injected just before the image name. */
+  extraArgs?: ReadonlyArray<string>
 }
 
 /**
@@ -21,7 +23,7 @@ export interface SpawnContainerOptions {
  * Returns the container's exit code.
  */
 export async function spawnContainer(options: SpawnContainerOptions): Promise<number> {
-  const { runtime, spec, workDir, gitConfig, command, extraEnv = {}, extraMounts = [] } = options
+  const { runtime, spec, workDir, gitConfig, command, extraEnv = {}, extraMounts = [], extraArgs = [] } = options
 
   const args: string[] = [
     runtime, "run", "--rm", "-it",
@@ -42,6 +44,10 @@ export async function spawnContainer(options: SpawnContainerOptions): Promise<nu
   for(const [key, value] of Object.entries(extraEnv)) {
     args.push("-e", `${key}=${value}`)
   }
+
+  // Extra docker-run flags must attach to `docker run` (before the image name),
+  // not the in-container command that follows it.
+  args.push(...extraArgs)
 
   args.push(spec.imageName)
 

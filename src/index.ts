@@ -31,7 +31,14 @@ const excludeValue = args.exclude      ?? getEnvConfig("EXCLUDE")
 const buildFlag    = args.build        || getBoolEnv("BUILD")
 const buildNCFlag  = args.buildNoCache || getBoolEnv("BUILD_NO_CACHE")
 const pullFlag     = args.pull         || getBoolEnv("PULL")
+const localFlag    = args.local        || getBoolEnv("LOCAL")
 const providerId   = args.provider     ?? "claude"
+
+// --local only affects ccr (it adds a host-gateway DNS entry). Warn so a misplaced
+// flag on claude/agy doesn't silently look like it did something.
+if(localFlag && providerId !== "ccr") {
+  console.warn(`  ⚠ --local has no effect with the '${providerId}' provider (ccr only); ignoring.`)
+}
 
 console.info("── secure-vibe ──────────────────────────────────────────")
 
@@ -67,7 +74,7 @@ try {
     secretsDir = await moveSecretsOut(workDir, excludedFiles)
     console.info(`  Secrets moved: ${excludedFiles.length} file(s) → ${secretsDir}`)
   }
-  exitCode = await runProvider({ runtime, workDir, command: cmdValue, gitConfig })
+  exitCode = await runProvider({ runtime, workDir, command: cmdValue, gitConfig, local: localFlag })
 } finally {
   if(secretsDir) await moveSecretsBack(workDir, secretsDir)
 }

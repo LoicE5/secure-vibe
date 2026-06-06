@@ -1,8 +1,8 @@
 import type { Runtime } from "./runtime"
 import type { GitIdentity } from "./git"
 
-/** Identifier of a CLI provider. "claude" and "antigravity" have runners today. */
-export type ProviderId = "claude" | "antigravity"
+/** Identifier of a CLI provider. "claude", "antigravity", and "ccr" have runners today. */
+export type ProviderId = "claude" | "antigravity" | "ccr"
 /** Static metadata describing a provider — fed to the generic container/image helpers. */
 export interface ProviderSpec {
   id: ProviderId
@@ -18,4 +18,6 @@ export type ProviderRunner = (options: {
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null
+  /** Opt-in host-machine access (ccr `--local`); claude/agy ignore it. */
+  local?: boolean
 }) => Promise<number>

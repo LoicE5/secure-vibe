@@ -14,7 +14,7 @@ export function parseArgs(): ParsedArgs {
   const argv = process.argv.slice(2)
   const positionals: string[] = []
   const values: Record<ValueFlag["key"], string | null> = { save: null, runtime: null, command: null, exclude: null }
-  const booleans = { build: false, buildNoCache: false, pull: false }
+  const booleans = { build: false, buildNoCache: false, pull: false, local: false }
   let provider: ProviderId | null = null
 
   const consumed = new Set<number>()
@@ -59,6 +59,7 @@ export function parseArgs(): ParsedArgs {
     build: booleans.build,
     buildNoCache: booleans.buildNoCache,
     pull: booleans.pull,
+    local: booleans.local,
     provider
   }
 }
