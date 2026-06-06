@@ -113,13 +113,66 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 
 [Claude Code Router](https://github.com/musistudio/claude-code-router) (CCR, MIT) runs Claude Code against alternative models — GLM, OpenRouter, DeepSeek, Gemini, or a local Ollama/LM Studio. CCR runs a small HTTP server **inside** the container on `127.0.0.1:3456`, points Claude Code at it (`ANTHROPIC_BASE_URL`), and routes each request to the model your config names. Because the server and Claude Code share the one container, cloud routing needs **no published ports and no host-network mode** — ordinary outbound bridge networking is enough.
 
-- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a minimal starter `config.json` (with an example Ollama provider) so you can see the shape; edit it on the host and re-run. When no `APIKEY` is set, `HOST` is pinned to `127.0.0.1` so the router is never bound wide (and the container publishes no ports regardless).
+- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a minimal starter `config.json` on the host (see the [examples below](#example-claude-code-routerconfigjson)); edit it and re-run. When no `APIKEY` is set, `HOST` is pinned to `127.0.0.1` so the router is never bound wide (and the container publishes no ports regardless).
 - **API keys — referenced-only forwarding.** CCR resolves keys via `$VAR`/`${VAR}` references in `config.json`; it does not read `.env` itself. secure-vibe parses your config, and forwards **only the variables it actually references**, resolving each from your project `.env` first, then your shell env (`.env` wins). A variable your config doesn't reference is never forwarded — least privilege by default. Unresolved references are warned about (CCR substitutes empty).
 - **Host-machine models — `--local`.** To reach a model running on your host (e.g. `ollama serve` on `11434`), add `--local`. It adds only `--add-host=host.docker.internal:host-gateway` (a DNS entry to the host gateway) — **not** host networking, and **no** inbound ports. Your config then uses `http://host.docker.internal:11434`.
 - **Bypass-permissions.** CCR has no permission model of its own. `ccr code` launches the `claude` CLI, which secure-vibe pins (via `CLAUDE_PATH`) to its wrapper adding `--dangerously-skip-permissions` and the sandbox prompt — so the route inherits bypass mode just like the Claude provider. The container itself is the sandbox.
 - **No Anthropic account needed.** Claude Code's first-run flags (onboarding, folder-trust, bypass) are pre-accepted so it launches straight into a session — you don't need to log in, because CCR supplies the endpoint and token. secure-vibe deliberately does **not** inject your Claude.ai subscription here: a real OAuth token can make Claude Code talk to Anthropic directly and bypass CCR's routing.
 
 > **Note:** Routing Claude Code to non-Anthropic models is a grey area under Anthropic's Claude Code terms. That's a choice you make as the operator (identical to running CCR on your own machine); it isn't something the secure-vibe project does on your behalf.
+
+#### Example `~/.claude-code-router/config.json`
+
+**A cloud provider (OpenRouter).** No `--local` needed. Reference the key as `$OPENROUTER_API_KEY` and set it in your project `.env` — secure-vibe forwards only that referenced variable into the container:
+
+```json
+{
+  "HOST": "127.0.0.1",
+  "PORT": 3456,
+  "Providers": [
+    {
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "$OPENROUTER_API_KEY",
+      "models": ["anthropic/claude-sonnet-4", "google/gemini-2.5-pro-preview"],
+      "transformer": { "use": ["openrouter"] }
+    }
+  ],
+  "Router": { "default": "openrouter,anthropic/claude-sonnet-4" }
+}
+```
+
+```sh
+# .env  (in the directory you run secure-vibe from)
+OPENROUTER_API_KEY=sk-or-...
+```
+```sh
+secure-vibe --ccr
+```
+
+**A model on your host (Ollama, LM Studio, MLX, llama.cpp…).** Any OpenAI-compatible local server works — no transformer needed. Use `host.docker.internal` for the host and run with `--local`. Example for [MLX-LM](https://github.com/ml-explore/mlx-lm) (`mlx_lm.server --model mlx-community/Qwen2.5-7B-Instruct-4bit` on host port 8080):
+
+```json
+{
+  "HOST": "127.0.0.1",
+  "PORT": 3456,
+  "Providers": [
+    {
+      "name": "mlx",
+      "api_base_url": "http://host.docker.internal:8080/v1/chat/completions",
+      "api_key": "not-needed",
+      "models": ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
+    }
+  ],
+  "Router": { "default": "mlx,mlx-community/Qwen2.5-7B-Instruct-4bit" }
+}
+```
+
+```sh
+secure-vibe --ccr --local
+```
+
+> If you get *connection refused* reaching a host server bound to `127.0.0.1`, restart it on all interfaces (e.g. `mlx_lm.server --host 0.0.0.0 …`, `OLLAMA_HOST=0.0.0.0 ollama serve`). Small local models (7B/quantized) work for trying things out but are much weaker at Claude Code's tool-heavy, long-context workflows than frontier models.
 
 ## Bun scripts
 
