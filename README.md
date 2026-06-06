@@ -44,6 +44,8 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `[directory]` | Path to mount into the container (positional, defaults to current directory) |
 | `--claude` | Use the Claude Code provider (default) |
 | `--antigravity`, `--agy` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
+| `--ccr`, `--claude-code-router` | Use the Claude Code Router (`ccr`) provider — route Claude Code to other models (see [Providers](#providers)) |
+| `--local` | (ccr only) Allow the container to reach models running on the host machine (adds a host-gateway DNS entry; no ports, no host network) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
 | `--command=<cmd>` | Command to run inside the container (default: the selected provider's agent). Shell metacharacters supported. |
@@ -65,6 +67,7 @@ secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls 
 | `BUILD` | Force image rebuild: `true`, `1`, or `yes` |
 | `BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
 | `PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
+| `LOCAL` | (ccr only) Allow the container to reach host-machine models: `true`, `1`, or `yes`. Equivalent to `--local` |
 | `EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
 | `ANTIGRAVITY_API_KEY` | Google AI Studio API key, passed through to the Antigravity provider for non-interactive auth (see [Providers](#providers)) |
 
@@ -80,7 +83,7 @@ CLI args take priority over environment variables, which take priority over buil
 
 ## Providers
 
-Pick a provider with `--claude` (default) or `--antigravity` (alias `--agy`). Each has its own image, brew volume, and credential handling. In both cases the host config is mounted **read-only** and nothing is written back to the host.
+Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), or `--ccr` (alias `--claude-code-router`). Each has its own image, brew volume, and credential handling. In every case the host config is mounted **read-only** and nothing is written back to the host.
 
 ### Claude (default)
 
@@ -106,6 +109,18 @@ The token is injected via env and written to the container's `~/.gemini/antigrav
 
 Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
 
+### Claude Code Router (`ccr`)
+
+[Claude Code Router](https://github.com/musistudio/claude-code-router) (CCR, MIT) runs Claude Code against alternative models — GLM, OpenRouter, DeepSeek, Gemini, or a local Ollama/LM Studio. CCR runs a small HTTP server **inside** the container on `127.0.0.1:3456`, points Claude Code at it (`ANTHROPIC_BASE_URL`), and routes each request to the model your config names. Because the server and Claude Code share the one container, cloud routing needs **no published ports and no host-network mode** — ordinary outbound bridge networking is enough.
+
+- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a minimal starter `config.json` (with an example Ollama provider) so you can see the shape; edit it on the host and re-run. The container always runs `NON_INTERACTIVE_MODE` and pins `HOST` to `127.0.0.1` when no `APIKEY` is set, so the router is never exposed.
+- **API keys — referenced-only forwarding.** CCR resolves keys via `$VAR`/`${VAR}` references in `config.json`; it does not read `.env` itself. secure-vibe parses your config, and forwards **only the variables it actually references**, resolving each from your project `.env` first, then your shell env (`.env` wins). A variable your config doesn't reference is never forwarded — least privilege by default. Unresolved references are warned about (CCR substitutes empty).
+- **Host-machine models — `--local`.** To reach a model running on your host (e.g. `ollama serve` on `11434`), add `--local`. It adds only `--add-host=host.docker.internal:host-gateway` (a DNS entry to the host gateway) — **not** host networking, and **no** inbound ports. Your config then uses `http://host.docker.internal:11434`.
+- **Bypass-permissions.** CCR has no permission model of its own. `ccr code` launches the `claude` CLI, which on `PATH` is secure-vibe's wrapper adding `--dangerously-skip-permissions` and the sandbox prompt — so the route inherits bypass mode just like the Claude provider. The container itself is the sandbox.
+- **Optional Anthropic pre-auth.** If your host has Claude credentials (`~/.claude.json`), they're reused so a CCR route pointing back at Anthropic starts logged in. This is best-effort — absent is fine, since CCR may route entirely off-Anthropic.
+
+> **Note:** Routing Claude Code to non-Anthropic models is a grey area under Anthropic's Claude Code terms. That's a choice you make as the operator (identical to running CCR on your own machine); it isn't something the secure-vibe project does on your behalf.
+
 ## Bun scripts
 
 | Script | Description |
@@ -121,7 +136,8 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 | `bun run prune:agy` | Delete the Antigravity auth volumes (forces a fresh login) |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
-| `bun run docker:build:claude` / `docker:build:antigravity` | Build a provider image locally |
+| `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
+| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` | Build a provider image locally |
 
 ## Shell completion
 

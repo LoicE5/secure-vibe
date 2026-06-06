@@ -1,5 +1,5 @@
 {
-  "version": "3.4.0",
+  "version": "3.5.0",
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
@@ -16,11 +16,15 @@
     "docker:build:antigravity": "docker build -f docker/antigravity.dockerfile -t ghcr.io/loice5/secure-vibe/antigravity:latest .",
     "docker:build:antigravity:no-cache": "docker build --no-cache -f docker/antigravity.dockerfile -t ghcr.io/loice5/secure-vibe/antigravity:latest .",
     "docker:pull:antigravity": "docker pull ghcr.io/loice5/secure-vibe/antigravity:latest",
+    "docker:build:ccr": "docker build -f docker/ccr.dockerfile -t ghcr.io/loice5/secure-vibe/ccr:latest .",
+    "docker:build:ccr:no-cache": "docker build --no-cache -f docker/ccr.dockerfile -t ghcr.io/loice5/secure-vibe/ccr:latest .",
+    "docker:pull:ccr": "docker pull ghcr.io/loice5/secure-vibe/ccr:latest",
     "setup:alias": "bun scripts/alias.ts",
     "setup:completion": "bun scripts/completion.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
     "prune:image:claude": "docker rmi ghcr.io/loice5/secure-vibe/claude:latest",
-    "prune:image:antigravity": "docker rmi ghcr.io/loice5/secure-vibe/antigravity:latest"
+    "prune:image:antigravity": "docker rmi ghcr.io/loice5/secure-vibe/antigravity:latest",
+    "prune:image:ccr": "docker rmi ghcr.io/loice5/secure-vibe/ccr:latest"
   },
   "devDependencies": {
     "@types/bun": "latest"

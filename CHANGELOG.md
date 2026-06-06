@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.5.0
+
+- Add **Claude Code Router** (`ccr`) as a selectable provider via `--ccr` (or `--claude-code-router`), alongside `--claude` and `--antigravity`: its own container image (`ghcr.io/loice5/secure-vibe/ccr`), Dockerfile, entrypoint, and `docker:build:ccr` / `docker:pull:ccr` / `prune:image:ccr` scripts. Routes Claude Code to alternative models (GLM, OpenRouter, DeepSeek, Gemini, or a local Ollama/LM Studio) while keeping the sandbox and bypass-permissions guarantees
+- Install CCR with `bun` (no npm, no node) into `~/.bun`, with a `node`→`bun` shim; the `ccr` wrapper routes `ccr` → `ccr code` and reuses the existing `claude` wrapper so the spawned Claude Code inherits `--dangerously-skip-permissions` + the sandbox prompt
+- Mount the host `~/.claude-code-router` **read-only** (mirrored writable in-container); scaffold a minimal starter `config.json` when none exists, and always force `NON_INTERACTIVE_MODE` + pin `HOST` to `127.0.0.1` when no `APIKEY` is set so the router is never exposed
+- Forward API keys with strict least privilege: parse `config.json` for `$VAR`/`${VAR}` references and forward **only** those, resolving each from the project `.env` first then the host env (`.env` wins) — variables the config doesn't reference are never forwarded
+- Add `--local` (env `LOCAL`) for the CCR provider to reach host-machine models via `--add-host=host.docker.internal:host-gateway` — no published ports and no host-network mode
+
 ## 3.4.0
 
 - Add the **Antigravity CLI** (`agy`) as a selectable provider via `--antigravity` (or the shorthand `--agy`), alongside the default `--claude`: its own container image (`ghcr.io/loice5/secure-vibe/antigravity`), Dockerfile, entrypoint, and `docker:build:antigravity` / `docker:pull:antigravity` scripts
