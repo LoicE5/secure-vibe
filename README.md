@@ -123,7 +123,7 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 
 #### Example `~/.claude-code-router/config.json`
 
-**A cloud provider (OpenRouter).** No `--local` needed. Reference the key as `$OPENROUTER_API_KEY` and set it in your project `.env` — secure-vibe forwards only that referenced variable into the container:
+A single config can mix providers. This one has both a **cloud provider** (OpenRouter) and a **host-machine model** (MLX/Ollama/LM Studio/llama.cpp — any OpenAI-compatible local server). The `Router` sends the main session to OpenRouter and Claude Code's lightweight background calls to the local model; switch the active model any time from inside Claude Code with `/model openrouter,anthropic/claude-sonnet-4` or `/model mlx,mlx-community/Qwen2.5-7B-Instruct-4bit`.
 
 ```json
 {
@@ -136,27 +136,7 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
       "api_key": "$OPENROUTER_API_KEY",
       "models": ["anthropic/claude-sonnet-4", "google/gemini-2.5-pro-preview"],
       "transformer": { "use": ["openrouter"] }
-    }
-  ],
-  "Router": { "default": "openrouter,anthropic/claude-sonnet-4" }
-}
-```
-
-```sh
-# .env  (in the directory you run secure-vibe from)
-OPENROUTER_API_KEY=sk-or-...
-```
-```sh
-secure-vibe --ccr
-```
-
-**A model on your host (Ollama, LM Studio, MLX, llama.cpp…).** Any OpenAI-compatible local server works — no transformer needed. Use `host.docker.internal` for the host and run with `--local`. Example for [MLX-LM](https://github.com/ml-explore/mlx-lm) (`mlx_lm.server --model mlx-community/Qwen2.5-7B-Instruct-4bit` on host port 8080):
-
-```json
-{
-  "HOST": "127.0.0.1",
-  "PORT": 3456,
-  "Providers": [
+    },
     {
       "name": "mlx",
       "api_base_url": "http://host.docker.internal:8080/v1/chat/completions",
@@ -164,15 +144,28 @@ secure-vibe --ccr
       "models": ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
     }
   ],
-  "Router": { "default": "mlx,mlx-community/Qwen2.5-7B-Instruct-4bit" }
+  "Router": {
+    "default": "openrouter,anthropic/claude-sonnet-4",
+    "background": "mlx,mlx-community/Qwen2.5-7B-Instruct-4bit"
+  }
 }
 ```
 
+Notes on the two providers:
+
+- **OpenRouter (cloud):** needs the `openrouter` transformer. Reference the key as `$OPENROUTER_API_KEY` and set it in your project `.env` — secure-vibe forwards only that referenced variable into the container.
+- **MLX (host):** any OpenAI-compatible local server, no transformer. Reach the host via `host.docker.internal` (the example assumes `mlx_lm.server --model mlx-community/Qwen2.5-7B-Instruct-4bit` on port 8080).
+
 ```sh
+# .env  (in the directory you run secure-vibe from)
+OPENROUTER_API_KEY=sk-or-...
+```
+```sh
+# --local is required so the container can reach the host MLX server
 secure-vibe --ccr --local
 ```
 
-> If you get *connection refused* reaching a host server bound to `127.0.0.1`, restart it on all interfaces (e.g. `mlx_lm.server --host 0.0.0.0 …`, `OLLAMA_HOST=0.0.0.0 ollama serve`). Small local models (7B/quantized) work for trying things out but are much weaker at Claude Code's tool-heavy, long-context workflows than frontier models.
+> If you get *connection refused* reaching a host server bound to `127.0.0.1`, restart it on all interfaces (e.g. `mlx_lm.server --host 0.0.0.0 …`, `OLLAMA_HOST=0.0.0.0 ollama serve`). Small local models (7B/quantized) work for trying things out but are much weaker at Claude Code's tool-heavy, long-context workflows than frontier models. If you only use the cloud provider, drop the `mlx` block and the `background` route and run without `--local`.
 
 ## Bun scripts
 
