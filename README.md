@@ -113,13 +113,32 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 
 [Claude Code Router](https://github.com/musistudio/claude-code-router) (CCR, MIT) runs Claude Code against alternative models — GLM, OpenRouter, DeepSeek, Gemini, or a local Ollama/LM Studio. CCR runs a small HTTP server **inside** the container on `127.0.0.1:3456`, points Claude Code at it (`ANTHROPIC_BASE_URL`), and routes each request to the model your config names. Because the server and Claude Code share the one container, cloud routing needs **no published ports and no host-network mode** — ordinary outbound bridge networking is enough.
 
-- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a minimal starter `config.json` on the host (see the [examples below](#example-claude-code-routerconfigjson)); edit it and re-run. When no `APIKEY` is set, `HOST` is pinned to `127.0.0.1` so the router is never bound wide (and the container publishes no ports regardless).
+- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a starter `config.json` on the host (see the [examples below](#example-claude-code-routerconfigjson)) — it defaults to a free, tool-calling OpenRouter model, so it runs with just `OPENROUTER_API_KEY` in your project `.env`. Edit it and re-run. `HOST` is always pinned to `127.0.0.1` in the container so the router is never bound wide (and the container publishes no ports regardless).
 - **API keys — referenced-only forwarding.** CCR resolves keys via `$VAR`/`${VAR}` references in `config.json`; it does not read `.env` itself. secure-vibe parses your config, and forwards **only the variables it actually references**, resolving each from your project `.env` first, then your shell env (`.env` wins). A variable your config doesn't reference is never forwarded — least privilege by default. Unresolved references are warned about (CCR substitutes empty).
 - **Host-machine models — `--local`.** To reach a model running on your host (e.g. `ollama serve` on `11434`), add `--local`. It adds only `--add-host=host.docker.internal:host-gateway` (a DNS entry to the host gateway) — **not** host networking, and **no** inbound ports. Your config then uses `http://host.docker.internal:11434`.
-- **Bypass-permissions.** CCR has no permission model of its own. `ccr code` launches the `claude` CLI, which secure-vibe pins (via `CLAUDE_PATH`) to its wrapper adding `--dangerously-skip-permissions` and the sandbox prompt — so the route inherits bypass mode just like the Claude provider. The container itself is the sandbox.
-- **No Anthropic account needed.** Claude Code's first-run flags (onboarding, folder-trust, bypass) are pre-accepted so it launches straight into a session — you don't need to log in, because CCR supplies the endpoint and token. secure-vibe deliberately does **not** inject your Claude.ai subscription here: a real OAuth token can make Claude Code talk to Anthropic directly and bypass CCR's routing.
+- **Every command routes through CCR.** A direct-to-Anthropic `claude` would defeat the point of this container, so all three entry points go through `ccr code`; they differ only in permission posture:
+
+  | Command | Routes via | Permissions | Sandbox prompt |
+  |---|---|---|---|
+  | `claude` | `ccr code` | `--dangerously-skip-permissions` | yes |
+  | `ccr` | `ccr code` | `--dangerously-skip-permissions` | yes |
+  | `claude-default` | `ccr code` | normal prompts (no bypass) | yes |
+
+  Each routing wrapper pins `CLAUDE_PATH` to an inner wrapper that calls the real `claude` binary by absolute path (no recursion). Use `claude` or `ccr` for the usual bypass workflow; use `claude-default` when you want to review each action. Nothing reaches Anthropic directly. The container itself is the sandbox.
+- **No Anthropic account needed.** Claude Code's first-run flags (onboarding, folder-trust, bypass) are pre-accepted, and secure-vibe gives CCR a dummy `APIKEY` (only when your config sets none) that CCR forwards to Claude Code as its auth token — so Claude considers itself authenticated and launches straight into a session with no login or wizard. secure-vibe deliberately does **not** inject your Claude.ai subscription here: a real OAuth token can make Claude Code talk to Anthropic directly and bypass CCR's routing.
 
 > **Note:** Routing Claude Code to non-Anthropic models is a grey area under Anthropic's Claude Code terms. That's a choice you make as the operator (identical to running CCR on your own machine); it isn't something the secure-vibe project does on your behalf.
+
+#### Selecting a model
+
+A model is named `provider,model_id` (the `provider` is a `Providers[].name`; the `model_id` is one of that provider's `models`). Two ways to pick one:
+
+- **In the config** — set `Router.default` (the main session model). Other slots: `background` (Claude Code's lightweight calls), `think`, `longContext`, `webSearch`. Each takes the same `provider,model_id` string.
+- **At runtime** — switch the active model any time from inside Claude Code with `/model openrouter,qwen/qwen3-coder:free` (or any `provider,model_id` your config defines).
+
+The scaffolded starter defaults to **`openrouter,qwen/qwen3-coder:free`** — a free, tool-calling coding model that runs with just an `OPENROUTER_API_KEY`. `openrouter/free` (an auto-router over free tool-capable models) is also listed to switch to.
+
+> **Free-model caveats.** Free tiers are rate-limited and noticeably rougher at Claude Code's tool-heavy, long-context workflows than frontier models — fine for trying things out, weak for real agentic work. Some free endpoints also have hard constraints: `openai/gpt-oss-120b:free`, for example, **mandates reasoning** and returns `400 "Reasoning is mandatory for this endpoint and cannot be disabled"` because CCR disables reasoning for agentic use. secure-vibe uses CCR's behavior as-is and doesn't re-engineer its request handling — so pick a model that works out of the box (like `qwen/qwen3-coder:free`) or point `Router.default` at a paid frontier model for serious work.
 
 #### Example `~/.claude-code-router/config.json`
 

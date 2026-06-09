@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# `ccr code` launches the `claude` CLI via PATH, which resolves to our
-# /home/viber/bin/claude wrapper (--dangerously-skip-permissions + sandbox prompt).
-# So this wrapper must NOT re-add those flags — it only routes `ccr` → `ccr code`.
+# Used for BOTH `/home/viber/bin/claude` and `/home/viber/bin/ccr`. The whole point of
+# the CCR container is to route through claude-code-router, so the bare `claude` command
+# routes through it too (a direct-to-Anthropic claude would defeat the container).
 #
-# Call the real ccr by ABSOLUTE path (~/.bun/bin/ccr) so this wrapper never recurses
-# into itself, and via `bun --bun` so node-shebang scripts run under bun (no node).
+# `ccr code` launches the inner claude via $CLAUDE_PATH. We pin it to claude-bypass
+# (--dangerously-skip-permissions + sandbox prompt) — that inner wrapper calls the REAL
+# binary by absolute path, so this never recurses. Call the real ccr by ABSOLUTE path
+# (~/.bun/bin/ccr) via `bun --bun` so node-shebang scripts run under bun (no node).
+export CLAUDE_PATH=/home/viber/bin/claude-bypass
 exec bun --bun /home/viber/.bun/bin/ccr code "$@"

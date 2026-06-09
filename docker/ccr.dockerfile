@@ -54,6 +54,10 @@ RUN bun install -g @musistudio/claude-code-router@2.0.0
 
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
 
+# Starter config for the fallback scaffold path in the entrypoint (when no host config is
+# mounted). Same single source the host runner imports, so the two scaffolds never drift.
+COPY --chown=viber:viber src/assets/ccr-starter-config.json /home/viber/.ccr-starter-config.json
+
 # /home/viber/bin sits ahead of ~/.local/bin and ~/.bun/bin so our wrappers shadow the
 # real binaries on PATH — covers interactive shell, auto-start, AND the explicit-command
 # entrypoint path (which never sources .bashrc).
@@ -66,21 +70,27 @@ ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PATH}"
 RUN printf '#!/usr/bin/env bash\nexec bun "$@"\n' > /home/viber/bin/node \
     && chmod +x /home/viber/bin/node
 
-# claude wrapper: `ccr code` spawns `claude` and inherits --dangerously-skip-permissions
-# + the sandbox prompt (the point of secure-vibe). CCR resolves the binary from
-# CLAUDE_PATH (then $PATH, then "claude"), so pin it to the wrapper explicitly — this
-# guarantees the bypass wrapper is used regardless of PATH ordering inside CCR's shell.
-COPY --chown=viber:viber src/assets/claude-wrapper.sh /home/viber/bin/claude
-RUN chmod +x /home/viber/bin/claude
-ENV CLAUDE_PATH="/home/viber/bin/claude"
-
-# ccr wrapper: routes `ccr` → `ccr code` via bun, calling the real ccr by absolute path.
+# Command model — every entry point routes through CCR (a direct-to-Anthropic claude
+# would defeat this container); they differ only in permission posture:
+#   claude, ccr      → `ccr code` WITH --dangerously-skip-permissions  (ccr-wrapper.sh)
+#   claude-default   → `ccr code` WITHOUT bypass, normal prompts        (ccr-claude-default.sh)
+# Each routing wrapper exports a different $CLAUDE_PATH; `ccr code` spawns that inner
+# wrapper, which calls the REAL claude by absolute path (so no wrapper ever recurses).
+# Both inner wrappers append the sandbox T&Cs prompt.
+COPY --chown=viber:viber src/assets/claude-bypass.sh /home/viber/bin/claude-bypass
+COPY --chown=viber:viber src/assets/claude-nobypass.sh /home/viber/bin/claude-nobypass
+COPY --chown=viber:viber src/assets/ccr-wrapper.sh /home/viber/bin/claude
 COPY --chown=viber:viber src/assets/ccr-wrapper.sh /home/viber/bin/ccr
-RUN chmod +x /home/viber/bin/ccr
+COPY --chown=viber:viber src/assets/ccr-claude-default.sh /home/viber/bin/claude-default
+RUN chmod +x /home/viber/bin/claude-bypass /home/viber/bin/claude-nobypass \
+        /home/viber/bin/claude /home/viber/bin/ccr /home/viber/bin/claude-default
 
-# Escape-hatch symlinks to the vanilla binaries.
-RUN ln -s /home/viber/.local/bin/claude /home/viber/bin/claude-default \
-    && ln -s /home/viber/.bun/bin/ccr /home/viber/bin/ccr-default
+# Safe default if anything reaches `ccr code` without going through a routing wrapper
+# (the wrappers override it per-command).
+ENV CLAUDE_PATH="/home/viber/bin/claude-bypass"
+
+# Escape-hatch symlink to the raw ccr binary for debugging.
+RUN ln -s /home/viber/.bun/bin/ccr /home/viber/bin/ccr-default
 
 # Auto-start + PATH re-assertion appended to .bashrc. The SHLVL guard ensures
 # auto-start fires only on the outermost bash, not on sub-shells.

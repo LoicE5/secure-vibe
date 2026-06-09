@@ -5,28 +5,19 @@ import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { loadDotEnv, extractVarTokens } from "../../utils/env-file"
 import { CCR_PROVIDER_SPEC } from "./spec"
+// Single source of truth for the starter config (shared with the container entrypoint, which
+// reads the same file copied into the image). Bun inlines this JSON at build time, so the
+// bundled CLI has no runtime dependency on the asset path.
+import STARTER_CONFIG from "../../assets/ccr-starter-config.json"
 
 /**
  * Minimal starter config written to the HOST when none exists, so the user has a real,
- * persistent, editable file (the container mount is read-only). No APIKEY → CCR binds
- * 127.0.0.1. The example provider targets a host-machine Ollama (reachable with `--local`).
+ * persistent, editable file (the container mount is read-only). APIKEY is a dummy that CCR
+ * forwards to Claude Code as its auth token so it skips the onboarding wizard. Defaults to a
+ * free, tool-calling OpenRouter model (runs with just $OPENROUTER_API_KEY in the project .env,
+ * no --local); a local MLX provider is included to switch to if you run one (needs --local).
+ * The literal lives in src/assets/ccr-starter-config.json — edit it there.
  */
-const STARTER_CONFIG = {
-  _comment: "secure-vibe scaffolded this starter. Edit it to add real providers/keys, then re-run. Only $VARs referenced here are forwarded into the container (resolved from your project .env first, then host env).",
-  HOST: "127.0.0.1",
-  PORT: 3456,
-  Providers: [
-    {
-      name: "ollama",
-      api_base_url: "http://host.docker.internal:11434/v1/chat/completions",
-      api_key: "ollama",
-      models: ["qwen2.5-coder:latest"]
-    }
-  ],
-  Router: {
-    default: "ollama,qwen2.5-coder:latest"
-  }
-}
 
 /**
  * Ensures a CCR config exists ON THE HOST. If ~/.claude-code-router/config.json is
@@ -70,7 +61,7 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
   // Give the user a real, editable config on the host if they have none yet.
   if(await ensureHostConfig()) {
     console.info(`  No CCR config found — wrote a starter to ${CCR_CONFIG_PATH}.`)
-    console.info("    Edit it to add real providers/keys, then re-run. The example 'ollama' provider needs --local.")
+    console.info("    It defaults to a free OpenRouter model — set OPENROUTER_API_KEY in your project .env, then re-run.")
   }
 
   // Discover which env vars the active config references (empty if unreadable).
