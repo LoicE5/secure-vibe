@@ -2,24 +2,61 @@
 
 Run an AI coding agent inside an isolated Docker or Podman container. Your credentials are injected automatically — no manual auth inside the container. Your host system stays untouched. *Bypass permissions* mode becomes reasonable.
 
-Two providers are supported, selected with a flag:
+Three providers are supported, selected with a flag:
 
 - `--claude` *(default)* — [Claude Code](https://claude.ai/code)
 - `--antigravity` (alias `--agy`) — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
+- `--ccr` (alias `--claude-code-router`) — [Claude Code Router](https://github.com/musistudio/claude-code-router): run Claude Code against other models — OpenRouter, GLM, DeepSeek, or a local Ollama/LM Studio (see [Providers](#providers))
 
-The container comes with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`) seeded on first run, so packages you install survive container restarts without being rebuilt into the image. You can therefore let the agent run your code without sudo access, fetching the needed dependencies on the fly. The volume is **shared by both providers** — it's a provider-neutral tooling cache (the agent CLIs themselves live in the image), so a Claude run and an Antigravity run use the same stack with no reinstall and no drift.
+Why it's safe:
+
+- The agent runs in an isolated container; your host filesystem is untouched apart from the one directory you mount.
+- Host credentials and config are mounted **read-only** and injected into the container's own copies — nothing is ever written back to the host.
+- The image is hardened Ubuntu **26.04 LTS**: root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published.
+
+**Current version: 3.6.0** — see the [CHANGELOG](CHANGELOG.md).
+
+## Contents
+
+- [Persistent Homebrew volume](#persistent-homebrew-volume)
+- [Requirements](#requirements)
+- [Quickstart](#quickstart)
+- [Run](#run)
+- [CLI Parameters](#cli-parameters)
+- [Images](#images)
+- [Environment Variables](#environment-variables)
+- [Config resolution](#config-resolution)
+- [Providers](#providers)
+- [Bun scripts](#bun-scripts)
+- [Shell completion](#shell-completion)
+- [Excluding files](#excluding-files)
+- [Security notes](#security-notes)
+
+## Persistent Homebrew volume
+
+The container ships with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`), seeded on first run. Packages you install survive container restarts without being rebuilt into the image, so the agent can fetch dependencies on the fly with no sudo access. The volume is **shared by all providers** — it's a provider-neutral tooling cache (the agent CLIs and `bun` are baked into the image as layers; brew handles your *user* packages, rootless), so a Claude run and an Antigravity run use the same stack with no reinstall and no drift.
 
 > **Upgrading from an older image?** The container user is now pinned to a fixed UID (`1000`); older images derived it from your host user. If `brew` reports `Cellar is not writable`, your brew volume was seeded under the old UID — reset it once with `docker volume rm secure-vibe-brew` (it re-seeds automatically on the next run).
-
-> The underlying docker image is based on Ubuntu and is hardened. The user does not have root access. All packages are handled rootless via brew.
 
 ## Requirements
 
 - [Bun](https://bun.sh)
-- **Docker** or Podman (running)
+- **Docker** or Podman (running), on a host booted with cgroup v2 (Ubuntu 26.04 containers no longer support cgroup v1; modern Docker / Docker Desktop default to v2, so most setups are unaffected)
 - The provider you intend to use, authenticated on the host:
   - Claude: Claude Code installed and authenticated
   - Antigravity: see [Providers](#providers) for auth options
+  - CCR: no host auth needed — just a `~/.claude-code-router/config.json` (scaffolded on first run) and the API key(s) it references, e.g. `OPENROUTER_API_KEY` in your project `.env` (see [Providers](#providers))
+
+## Quickstart
+
+```sh
+git clone https://github.com/LoicE5/secure-vibe.git
+cd secure-vibe
+bun vibe /path/to/project        # start the agent on your project
+bun run setup:alias              # optional: install the `secure-vibe` alias + tab-completion
+```
+
+Prefer a standalone binary? `bun run build` compiles one per platform into `dist/` (see [Bun scripts](#bun-scripts)).
 
 ## Run
 
@@ -30,6 +67,7 @@ bun vibe . --save=zip           # zip the directory before starting
 bun vibe . --runtime=podman     # force podman
 bun vibe . --command=bash       # open a shell instead of the agent
 bun vibe . --antigravity        # use Google's Antigravity CLI instead of Claude
+bun vibe . --ccr                # route Claude Code to other models via Claude Code Router
 bun vibe . --build              # rebuild the image before starting
 bun vibe . --build-no-cache     # rebuild without cache
 bun vibe . --pull               # force-pull the latest image before starting
@@ -53,6 +91,10 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `--build-no-cache` | Rebuild the image from scratch (no layer cache) |
 | `--pull` | Force-pull the latest image before starting |
 | `--exclude=<patterns>` | Comma-separated glob patterns of files to hide from the container (see [Excluding files](#excluding-files)) |
+
+## Images
+
+Each provider has its own image, published to GHCR as `ghcr.io/loice5/secure-vibe/<provider>:latest` (`claude`, `antigravity`, `ccr`). With no flags, secure-vibe uses the local image if present (checking the registry for updates at most once a day), pulls it if missing, and falls back to building locally from `docker/<provider>.dockerfile` if the pull fails. Use `--pull` to force-pull, or `--build` / `--build-no-cache` to force a local build.
 
 ## Environment Variables
 
@@ -83,7 +125,7 @@ CLI args take priority over environment variables, which take priority over buil
 
 ## Providers
 
-Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), or `--ccr` (alias `--claude-code-router`). Each has its own image, brew volume, and credential handling. In every case the host config is mounted **read-only** and nothing is written back to the host.
+Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), or `--ccr` (alias `--claude-code-router`). Each has its own image and credential handling; the [brew volume](#persistent-homebrew-volume) is shared. In every case the host config is mounted **read-only** and nothing is written back to the host.
 
 ### Claude (default)
 
@@ -194,21 +236,20 @@ secure-vibe --ccr --local
 | `bun run env:init` | Copy `.env.example` to `.env` (no-op if `.env` already exists) |
 | `bun run setup:alias` | Install the `secure-vibe` shell alias **and** tab-completion (see [Shell completion](#shell-completion)) |
 | `bun run setup:completion` | Install tab-completion only |
-| `bun run build` | Compile a standalone binary for the current platform into `dist/secure-vibe` |
-| `bun run build:arm64` | Compile for macOS arm64 (Apple Silicon) |
-| `bun run build:x64` | Compile for macOS x64 (Intel) |
-| `bun run prune:brew` | Delete the shared persistent Homebrew volume (both providers) |
-| `bun run prune:agy` | Delete the Antigravity auth volumes (forces a fresh login) |
+| `bun run build` | Compile standalone binaries for all supported platforms into `dist/secure-vibe-<target>` |
+| `bun run build:linux-x64` / `build:linux-arm64` / `build:macos-x64` / `build:macos-arm64` | Compile for a single platform |
+| `bun run prune:brew` | Delete the shared persistent Homebrew volume (all providers) |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
 | `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
-| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` | Build a provider image locally |
+| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` | Build a provider image locally (append `:no-cache` to any of them to skip the layer cache) |
+| `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` | Pull a provider image from GHCR |
 
 ## Shell completion
 
 ```sh
 bun run setup:alias        # installs the `secure-vibe` alias + tab-completion
-exec $SHELL                # or: source ~/.bashrc / ~/.zshrc
+exec $SHELL                # or: source ~/.bash_aliases / ~/.zsh_aliases (where the stubs are installed)
 ```
 
 After setup, press `<TAB>` to complete flags, their values, and the directory:
@@ -237,7 +278,7 @@ Use `--exclude` (or the `EXCLUDE` env var) to prevent specific files from being 
 
 The move-out step happens after image build, so a pre-flight failure never leaves files displaced.
 
-> Note : The sibling directory isn't automatically deleted after the run. You can delete it manually after ensuring all files are properly back.
+> Note: The sibling directory isn't automatically deleted after the run. You can delete it manually after ensuring all files are properly back.
 
 **Pattern syntax** — standard globs, comma-separated:
 
@@ -245,8 +286,14 @@ The move-out step happens after image build, so a pre-flight failure never leave
 --exclude=".env"                        # exact filename (anywhere in tree)
 --exclude=".env,.env.*"                 # multiple patterns
 --exclude="secrets/**,**/*.pem"         # directories and wildcards
+--exclude="secrets"                     # a bare name that is a directory excludes it whole
 ```
+
+If an excluded file is **not** gitignored, a warning is printed — the move is visible to git, so anything tracked will show up as deleted in `git status` for the duration of the run.
 
 ## Security notes
 
-Mounting certain directories is blocked for safety: `~`, `/`, `/etc`, `/usr`, `/bin`, `/var`, and other system paths cannot be used as the working directory.
+- **Blocked mounts.** System paths cannot be used as the working directory: `~`, `/`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/var`, `/tmp`, `/proc`, `/sys`, `/dev`, and `/boot` are all rejected.
+- **Read-only host config.** Provider config directories (`~/.claude`, `~/.gemini`, `~/.claude-code-router`) are mounted read-only; credentials are injected into the container's own copies and nothing is written back to the host.
+- **Hardened image.** Root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published. The agent CLIs and `bun` are image layers; user packages are installed rootless via brew.
+- **Git identity.** Your host `user.name` / `user.email` are forwarded into the container (via `GIT_USER_NAME` / `GIT_USER_EMAIL`) so commits made inside are attributed to you; if none is configured, it falls back to `Claude <noreply@anthropic.com>`.
