@@ -3,17 +3,21 @@ import { runClaudeContainer } from "./claude/run-claude-container"
 import { CLAUDE_PROVIDER_SPEC } from "./claude/spec"
 import { runAntigravityContainer } from "./antigravity/run-antigravity-container"
 import { ANTIGRAVITY_PROVIDER_SPEC } from "./antigravity/spec"
+import { runCcrContainer } from "./ccr/run-ccr-container"
+import { CCR_PROVIDER_SPEC } from "./ccr/spec"
 
 /** Registry mapping each ProviderId to its container runner. */
 export const PROVIDER_RUNNERS: Partial<Record<ProviderId, ProviderRunner>> = {
   claude: runClaudeContainer,
-  antigravity: runAntigravityContainer
+  antigravity: runAntigravityContainer,
+  ccr: runCcrContainer
 }
 
 /** Registry mapping each ProviderId to its static spec (image, dockerfile, brew volume). */
 export const PROVIDER_SPECS: Partial<Record<ProviderId, ProviderSpec>> = {
   claude: CLAUDE_PROVIDER_SPEC,
-  antigravity: ANTIGRAVITY_PROVIDER_SPEC
+  antigravity: ANTIGRAVITY_PROVIDER_SPEC,
+  ccr: CCR_PROVIDER_SPEC
 }
 
 /**

@@ -44,6 +44,8 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `[directory]` | Path to mount into the container (positional, defaults to current directory) |
 | `--claude` | Use the Claude Code provider (default) |
 | `--antigravity`, `--agy` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
+| `--ccr`, `--claude-code-router` | Use the Claude Code Router (`ccr`) provider — route Claude Code to other models (see [Providers](#providers)) |
+| `--local` | (ccr only) Allow the container to reach models running on the host machine (adds a host-gateway DNS entry; no ports, no host network) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
 | `--command=<cmd>` | Command to run inside the container (default: the selected provider's agent). Shell metacharacters supported. |
@@ -65,6 +67,7 @@ secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls 
 | `BUILD` | Force image rebuild: `true`, `1`, or `yes` |
 | `BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
 | `PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
+| `LOCAL` | (ccr only) Allow the container to reach host-machine models: `true`, `1`, or `yes`. Equivalent to `--local` |
 | `EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
 | `ANTIGRAVITY_API_KEY` | Google AI Studio API key, passed through to the Antigravity provider for non-interactive auth (see [Providers](#providers)) |
 
@@ -80,7 +83,7 @@ CLI args take priority over environment variables, which take priority over buil
 
 ## Providers
 
-Pick a provider with `--claude` (default) or `--antigravity` (alias `--agy`). Each has its own image, brew volume, and credential handling. In both cases the host config is mounted **read-only** and nothing is written back to the host.
+Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), or `--ccr` (alias `--claude-code-router`). Each has its own image, brew volume, and credential handling. In every case the host config is mounted **read-only** and nothing is written back to the host.
 
 ### Claude (default)
 
@@ -106,6 +109,83 @@ The token is injected via env and written to the container's `~/.gemini/antigrav
 
 Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
 
+### Claude Code Router (`ccr`)
+
+[Claude Code Router](https://github.com/musistudio/claude-code-router) (CCR, MIT) runs Claude Code against alternative models — GLM, OpenRouter, DeepSeek, Gemini, or a local Ollama/LM Studio. CCR runs a small HTTP server **inside** the container on `127.0.0.1:3456`, points Claude Code at it (`ANTHROPIC_BASE_URL`), and routes each request to the model your config names. Because the server and Claude Code share the one container, cloud routing needs **no published ports and no host-network mode** — ordinary outbound bridge networking is enough.
+
+- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a starter `config.json` on the host (see the [examples below](#example-claude-code-routerconfigjson)) — it defaults to a free, tool-calling OpenRouter model, so it runs with just `OPENROUTER_API_KEY` in your project `.env`. Edit it and re-run. `HOST` is always pinned to `127.0.0.1` in the container so the router is never bound wide (and the container publishes no ports regardless).
+- **API keys — referenced-only forwarding.** CCR resolves keys via `$VAR`/`${VAR}` references in `config.json`; it does not read `.env` itself. secure-vibe parses your config, and forwards **only the variables it actually references**, resolving each from your project `.env` first, then your shell env (`.env` wins). A variable your config doesn't reference is never forwarded — least privilege by default. Unresolved references are warned about (CCR substitutes empty).
+- **Host-machine models — `--local`.** To reach a model running on your host (e.g. `ollama serve` on `11434`), add `--local`. It adds only `--add-host=host.docker.internal:host-gateway` (a DNS entry to the host gateway) — **not** host networking, and **no** inbound ports. Your config then uses `http://host.docker.internal:11434`.
+- **Every command routes through CCR.** A direct-to-Anthropic `claude` would defeat the point of this container, so all three entry points go through `ccr code`; they differ only in permission posture:
+
+  | Command | Routes via | Permissions | Sandbox prompt |
+  |---|---|---|---|
+  | `claude` | `ccr code` | `--dangerously-skip-permissions` | yes |
+  | `ccr` | `ccr code` | `--dangerously-skip-permissions` | yes |
+  | `claude-default` | `ccr code` | normal prompts (no bypass) | yes |
+
+  Each routing wrapper pins `CLAUDE_PATH` to an inner wrapper that calls the real `claude` binary by absolute path (no recursion). Use `claude` or `ccr` for the usual bypass workflow; use `claude-default` when you want to review each action. Nothing reaches Anthropic directly. The container itself is the sandbox.
+- **No Anthropic account needed.** Claude Code's first-run flags (onboarding, folder-trust, bypass) are pre-accepted, and secure-vibe gives CCR a dummy `APIKEY` (only when your config sets none) that CCR forwards to Claude Code as its auth token — so Claude considers itself authenticated and launches straight into a session with no login or wizard. secure-vibe deliberately does **not** inject your Claude.ai subscription here: a real OAuth token can make Claude Code talk to Anthropic directly and bypass CCR's routing.
+
+> **Note:** Routing Claude Code to non-Anthropic models is a grey area under Anthropic's Claude Code terms. That's a choice you make as the operator (identical to running CCR on your own machine); it isn't something the secure-vibe project does on your behalf.
+
+#### Selecting a model
+
+A model is named `provider,model_id` (the `provider` is a `Providers[].name`; the `model_id` is one of that provider's `models`). Two ways to pick one:
+
+- **In the config** — set `Router.default` (the main session model). Other slots: `background` (Claude Code's lightweight calls), `think`, `longContext`, `webSearch`. Each takes the same `provider,model_id` string.
+- **At runtime** — switch the active model any time from inside Claude Code with `/model openrouter,qwen/qwen3-coder:free` (or any `provider,model_id` your config defines).
+
+The scaffolded starter defaults to **`openrouter,qwen/qwen3-coder:free`** — a free, tool-calling coding model that runs with just an `OPENROUTER_API_KEY`. `openrouter/free` (an auto-router over free tool-capable models) is also listed to switch to.
+
+> **Free-model caveats.** Free tiers are rate-limited and noticeably rougher at Claude Code's tool-heavy, long-context workflows than frontier models — fine for trying things out, weak for real agentic work. Some free endpoints also have hard constraints: `openai/gpt-oss-120b:free`, for example, **mandates reasoning** and returns `400 "Reasoning is mandatory for this endpoint and cannot be disabled"` because CCR disables reasoning for agentic use. secure-vibe uses CCR's behavior as-is and doesn't re-engineer its request handling — so pick a model that works out of the box (like `qwen/qwen3-coder:free`) or point `Router.default` at a paid frontier model for serious work.
+
+#### Example `~/.claude-code-router/config.json`
+
+A single config can mix providers. This one has both a **cloud provider** (OpenRouter) and a **host-machine model** (MLX/Ollama/LM Studio/llama.cpp — any OpenAI-compatible local server). The `Router` sends the main session to OpenRouter and Claude Code's lightweight background calls to the local model; switch the active model any time from inside Claude Code with `/model openrouter,anthropic/claude-sonnet-4` or `/model mlx,mlx-community/Qwen2.5-7B-Instruct-4bit`.
+
+```json
+{
+  "HOST": "127.0.0.1",
+  "PORT": 3456,
+  "Providers": [
+    {
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "$OPENROUTER_API_KEY",
+      "models": ["anthropic/claude-sonnet-4", "google/gemini-2.5-pro-preview"],
+      "transformer": { "use": ["openrouter"] }
+    },
+    {
+      "name": "mlx",
+      "api_base_url": "http://host.docker.internal:8080/v1/chat/completions",
+      "api_key": "not-needed",
+      "models": ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
+    }
+  ],
+  "Router": {
+    "default": "openrouter,anthropic/claude-sonnet-4",
+    "background": "mlx,mlx-community/Qwen2.5-7B-Instruct-4bit"
+  }
+}
+```
+
+Notes on the two providers:
+
+- **OpenRouter (cloud):** needs the `openrouter` transformer. Reference the key as `$OPENROUTER_API_KEY` and set it in your project `.env` — secure-vibe forwards only that referenced variable into the container.
+- **MLX (host):** any OpenAI-compatible local server, no transformer. Reach the host via `host.docker.internal` (the example assumes `mlx_lm.server --model mlx-community/Qwen2.5-7B-Instruct-4bit` on port 8080).
+
+```sh
+# .env  (in the directory you run secure-vibe from)
+OPENROUTER_API_KEY=sk-or-...
+```
+```sh
+# --local is required so the container can reach the host MLX server
+secure-vibe --ccr --local
+```
+
+> If you get *connection refused* reaching a host server bound to `127.0.0.1`, restart it on all interfaces (e.g. `mlx_lm.server --host 0.0.0.0 …`, `OLLAMA_HOST=0.0.0.0 ollama serve`). Small local models (7B/quantized) work for trying things out but are much weaker at Claude Code's tool-heavy, long-context workflows than frontier models. If you only use the cloud provider, drop the `mlx` block and the `background` route and run without `--local`.
+
 ## Bun scripts
 
 | Script | Description |
@@ -121,7 +201,8 @@ Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt i
 | `bun run prune:agy` | Delete the Antigravity auth volumes (forces a fresh login) |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
-| `bun run docker:build:claude` / `docker:build:antigravity` | Build a provider image locally |
+| `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
+| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` | Build a provider image locally |
 
 ## Shell completion
 

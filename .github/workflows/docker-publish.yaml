@@ -26,6 +26,9 @@ jobs:
           - provider: antigravity
             image: secure-vibe/antigravity
             dockerfile: docker/antigravity.dockerfile
+          - provider: ccr
+            image: secure-vibe/ccr
+            dockerfile: docker/ccr.dockerfile
 
     steps:
       - name: Checkout

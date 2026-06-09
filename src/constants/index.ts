@@ -17,3 +17,10 @@ export {
   ANTIGRAVITY_IMAGE_CHECK_PATH,
   ANTIGRAVITY_DOCKERFILE_PATH
 } from "./providers/antigravity"
+export {
+  CCR_CONFIG_DIR,
+  CCR_CONFIG_PATH,
+  CCR_IMAGE_NAME,
+  CCR_IMAGE_CHECK_PATH,
+  CCR_DOCKERFILE_PATH
+} from "./providers/ccr"

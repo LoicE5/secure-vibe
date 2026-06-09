@@ -18,7 +18,7 @@
  * provider Dockerfiles can swap their own entrypoint behind the same path.
  */
 
-import { mkdir, writeFile, access, rm } from "fs/promises"
+import { mkdir, writeFile, readFile, access, rm } from "fs/promises"
 import { $ } from "bun"
 
 // ── Seed linuxbrew volume on first run ────────────────────────────────────────
@@ -43,6 +43,7 @@ if(!brewReady) {
 
 const CLAUDE_DIR = "/home/viber/.claude"
 const CLAUDE_HOST_DIR = "/home/viber/.claude-host"
+const CLAUDE_SETTINGS = `${CLAUDE_DIR}/settings.json`
 const HOME_DIR = "/home/viber"
 
 await mkdir(CLAUDE_DIR, { recursive: true })
@@ -72,11 +73,9 @@ if(credentials) {
     parsed = {}
   }
 
-  // ~/.claude.json — full merged config (auth + onboarding state)
-  // Ensure onboarding flags are set so Claude skips first-run setup prompts.
-  // Keychain-sourced credentials only carry auth tokens, not UI state.
+  // ~/.claude.json — full merged config. Keychain creds carry only auth tokens, not UI state,
+  // so set onboarding here; the bypass warning is pre-accepted in settings.json below.
   if(!parsed.hasCompletedOnboarding) parsed.hasCompletedOnboarding = true
-  if(!parsed.bypassPermissionsModeAccepted) parsed.bypassPermissionsModeAccepted = true
 
   const APP_DIR = "/home/viber/app"
   if(!parsed.projects) parsed.projects = {}
@@ -96,6 +95,17 @@ if(credentials) {
 } else {
   console.warn("  [entrypoint] CLAUDE_CREDENTIALS not set — Claude will prompt for authentication.")
 }
+
+// Suppress the bypass-permissions warning dialog (modern Claude Code gates it on this
+// settings key, not the legacy ~/.claude.json bypassPermissionsModeAccepted flag).
+let claudeSettings: Record<string, unknown> = {}
+try {
+  claudeSettings = JSON.parse(await readFile(CLAUDE_SETTINGS, "utf-8")) as Record<string, unknown>
+} catch {
+  claudeSettings = {}
+}
+claudeSettings.skipDangerousModePermissionPrompt = true
+await writeFile(CLAUDE_SETTINGS, JSON.stringify(claudeSettings, null, 2), { mode: 0o600 })
 
 // Apply host git identity so commits made inside the container are attributed correctly.
 const gitUserName = process.env.GIT_USER_NAME

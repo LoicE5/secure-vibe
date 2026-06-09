@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.5.0
+
+- Add **Claude Code Router** (`ccr`) as a selectable provider via `--ccr` (or `--claude-code-router`), alongside `--claude` and `--antigravity`: its own container image (`ghcr.io/loice5/secure-vibe/ccr`), Dockerfile, entrypoint, and `docker:build:ccr` / `docker:pull:ccr` / `prune:image:ccr` scripts. Routes Claude Code to alternative models (OpenRouter, GLM, DeepSeek, Gemini, or a local Ollama/LM Studio/MLX) while keeping the sandbox and bypass-permissions guarantees
+- Install CCR with `bun` (no npm, no node) into `~/.bun`, with a `node`→`bun` shim
+- **Every command routes through CCR** (a direct-to-Anthropic `claude` would defeat the container): `claude` and `ccr` run `ccr code` with `--dangerously-skip-permissions`; `claude-default` runs `ccr code` **without** bypass (normal permission prompts) for when you want to review actions. Each routing wrapper pins `CLAUDE_PATH` to an inner wrapper that calls the real `claude` binary by absolute path (no recursion) and appends the sandbox prompt — so all three carry the sandbox T&Cs, and nothing reaches Anthropic directly
+- Launch straight into a session with no login or onboarding wizard: pre-accept Claude Code's first-run flags **and** give CCR a dummy `APIKEY` (only when the config sets none) that it forwards to Claude Code as its auth token, so Claude considers itself authenticated. No Claude.ai OAuth is injected (a real token could make Claude bypass CCR and hit Anthropic directly)
+- Mount the host `~/.claude-code-router` **read-only** (mirrored writable in-container); when none exists, scaffold a starter `config.json` **on the host** (persistent and editable) defaulting to a free, tool-calling OpenRouter model (`qwen/qwen3-coder:free`) that runs with just `OPENROUTER_API_KEY`. `HOST` is always pinned to `127.0.0.1` so the router is never bound wide (the interactive Claude Code session is preserved — `NON_INTERACTIVE_MODE` is left untouched)
+- Forward API keys with strict least privilege: parse `config.json` for `$VAR`/`${VAR}` references and forward **only** those, resolving each from the project `.env` first then the host env (`.env` wins) — variables the config doesn't reference are never forwarded
+- Add `--local` (env `LOCAL`) for the CCR provider to reach host-machine models via `--add-host=host.docker.internal:host-gateway` — no published ports and no host-network mode
+
 ## 3.4.0
 
 - Add the **Antigravity CLI** (`agy`) as a selectable provider via `--antigravity` (or the shorthand `--agy`), alongside the default `--claude`: its own container image (`ghcr.io/loice5/secure-vibe/antigravity`), Dockerfile, entrypoint, and `docker:build:antigravity` / `docker:pull:antigravity` scripts

@@ -11,7 +11,7 @@ import { VALID_SAVE_MODES, VALID_RUNTIMES } from "./runtime"
 export interface BooleanFlag {
   name: string
   kind: "boolean"
-  key: "build" | "buildNoCache" | "pull"
+  key: "build" | "buildNoCache" | "pull" | "local"
 }
 
 /** A value flag takes a value via `--flag=value` or `--flag value`. `values` lists completable choices (enums). */
@@ -28,6 +28,7 @@ export const FLAGS: readonly FlagSpec[] = [
   { name: "--build", kind: "boolean", key: "build" },
   { name: "--build-no-cache", kind: "boolean", key: "buildNoCache" },
   { name: "--pull", kind: "boolean", key: "pull" },
+  { name: "--local", kind: "boolean", key: "local" },
   { name: "--save", kind: "value", key: "save", values: VALID_SAVE_MODES },
   { name: "--runtime", kind: "value", key: "runtime", values: VALID_RUNTIMES },
   { name: "--command", kind: "value", key: "command" },
@@ -38,11 +39,15 @@ export const FLAGS: readonly FlagSpec[] = [
 export const PROVIDER_FLAGS: Record<string, ProviderId> = {
   "--claude": "claude",
   "--antigravity": "antigravity",
-  "--agy": "antigravity"
+  "--agy": "antigravity",
+  "--ccr": "ccr",
+  "--claude-code-router": "ccr"
 }
 
 /**
- * Provider flags surfaced by tab-completion. Only "claude" and "antigravity" have
- * runners today (the rest are reserved), so we don't offer users non-working options.
+ * Provider flags surfaced by tab-completion. Only "claude", "antigravity", and "ccr"
+ * have runners today (the rest are reserved), so we don't offer users non-working options.
  */
-export const COMPLETABLE_PROVIDER_FLAGS: readonly string[] = ["--claude", "--antigravity", "--agy"]
+export const COMPLETABLE_PROVIDER_FLAGS: readonly string[] = [
+  "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router"
+]
