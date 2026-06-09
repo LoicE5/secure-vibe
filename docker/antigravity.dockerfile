@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -9,6 +9,7 @@ RUN apt-get update \
         curl \
         build-essential \
         ca-certificates \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home.
@@ -37,8 +38,13 @@ RUN curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.s
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
 
 RUN brew update && \
-    brew tap oven-sh/bun && \
-    brew install gcc bun
+    brew install gcc
+
+# Install bun from its official installer into ~/.bun (a normal image layer, NOT the
+# brew volume). bun is this container's PID 1 (ENTRYPOINT below), so it must never live
+# under /home/linuxbrew, which the resettable secure-vibe-brew volume shadows at runtime.
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/home/viber/.bun/bin:${PATH}"
 
 # Copy linuxbrew into the seed directory so the runtime volume can be populated
 # on first run even though /home/linuxbrew will be shadowed by a named volume.
