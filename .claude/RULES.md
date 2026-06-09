@@ -19,3 +19,4 @@
 - No space between a keyword and its opening parenthesis
     - `for(`, `if(`, `while(`, `switch(` → good
     - `for (`, `if (`, `while (`, `switch (` → bad
+- Comment sparingly — aim for self-explanatory code (clear names, small functions) over narration. At most one short line for the non-obvious "why"; never multi-line comment blocks restating what the code already says. If the code makes a comment redundant, delete the comment.

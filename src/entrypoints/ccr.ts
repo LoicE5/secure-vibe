@@ -22,7 +22,8 @@
  *
  * Bypass-permissions: `ccr code` launches the `claude` CLI via PATH, which resolves to
  * our /home/viber/bin/claude wrapper (--dangerously-skip-permissions + sandbox prompt).
- * This entrypoint adds nothing on that front — the wrapper is the single source.
+ * This entrypoint adds nothing on the flag front — the wrapper is the single source — but it
+ * does pre-accept the bypass *warning dialog* so launches are non-interactive (see below).
  *
  * The COPY directive in docker/ccr.dockerfile maps this file to the provider-agnostic
  * in-container path /home/viber/entrypoint.ts.
@@ -125,6 +126,7 @@ if(!configExists) {
 // Claude Code talk to Anthropic directly and ignore CCR's local endpoint, defeating routing.
 const CLAUDE_DIR = `${HOME_DIR}/.claude`
 const CLAUDE_JSON = `${HOME_DIR}/.claude.json`
+const CLAUDE_SETTINGS = `${CLAUDE_DIR}/settings.json`
 await mkdir(CLAUDE_DIR, { recursive: true })
 
 let claudeJson: Record<string, unknown> = {}
@@ -135,7 +137,6 @@ try {
 }
 
 claudeJson.hasCompletedOnboarding = true
-claudeJson.bypassPermissionsModeAccepted = true
 if(!claudeJson.theme) claudeJson.theme = "dark"
 
 // Pre-approve the custom API key so Claude doesn't prompt "use this custom API key?".
@@ -154,6 +155,17 @@ projects[APP_DIR].hasTrustDialogAccepted = true
 
 await writeFile(CLAUDE_JSON, JSON.stringify(claudeJson), { mode: 0o600 })
 
+// Suppress the bypass-permissions warning dialog (modern Claude Code gates it on this
+// settings key, not the legacy ~/.claude.json bypassPermissionsModeAccepted flag).
+let claudeSettings: Record<string, unknown> = {}
+try {
+  claudeSettings = JSON.parse(await readFile(CLAUDE_SETTINGS, "utf-8")) as Record<string, unknown>
+} catch {
+  claudeSettings = {}
+}
+claudeSettings.skipDangerousModePermissionPrompt = true
+await writeFile(CLAUDE_SETTINGS, JSON.stringify(claudeSettings, null, 2), { mode: 0o600 })
+
 // Apply host git identity so commits made inside the container are attributed correctly.
 const gitUserName = process.env.GIT_USER_NAME
 const gitUserEmail = process.env.GIT_USER_EMAIL
@@ -162,6 +174,18 @@ if(gitUserName) {
 }
 if(gitUserEmail) {
   await $`git config --global user.email ${gitUserEmail}`.quiet().nothrow()
+}
+
+// Pin ANTHROPIC_MODEL to Router.default so Claude Code DISPLAYS the model CCR actually routes
+// to (otherwise it shows its built-in default, e.g. "Opus", while CCR silently reroutes).
+try {
+  const config = JSON.parse(await readFile(CCR_CONFIG_PATH, "utf-8")) as Record<string, unknown>
+  const routerDefault = (config.Router as Record<string, unknown> | undefined)?.default
+  if(typeof routerDefault === "string" && routerDefault.length > 0) {
+    process.env.ANTHROPIC_MODEL = routerDefault
+  }
+} catch(configError: unknown) {
+  console.warn("  [entrypoint] ⚠ Could not read Router.default for ANTHROPIC_MODEL; Claude Code will show its own default:", configError)
 }
 
 // Ignore SIGINT at the bun (PID 1) level so ctrl+c inside the container
