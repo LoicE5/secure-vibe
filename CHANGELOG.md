@@ -3,6 +3,7 @@
 ## 3.6.0
 
 - Bump all base images to **Ubuntu 26.04 LTS** ("Resolute Raccoon") across `docker/{claude,antigravity,ccr}.dockerfile` — the new LTS baseline with an up-to-date toolchain (glibc 2.43). Homebrew, `bun`, and the agent CLIs install unchanged; the built-in UID/GID 1000 user is still present, so the `viber` rename holds
+- Install **bun** from its official installer into `~/.bun` (a normal image layer) instead of via Homebrew. bun is the container's PID 1 (`ENTRYPOINT ["bun", …]`), but Homebrew lives under the resettable `secure-vibe-brew` volume — so wiping or UID-mismatching that volume previously made bun vanish and the container fail to start. Decoupling bun from the volume keeps startup robust; Homebrew stays for `gcc` and user packages (adds `unzip` to the apt layer, required by the bun installer)
 - **Heads-up:** Ubuntu 26.04 containers require a host booted with cgroup v2 (cgroup v1 support was removed upstream). Modern Docker / Docker Desktop default to v2, so most setups are unaffected
 
 ## 3.5.0
