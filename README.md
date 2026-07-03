@@ -2,11 +2,12 @@
 
 Run an AI coding agent inside an isolated Docker or Podman container. Your credentials are injected automatically — no manual auth inside the container. Your host system stays untouched. *Bypass permissions* mode becomes reasonable.
 
-Three providers are supported, selected with a flag:
+Four providers are supported, selected with a flag:
 
 - `--claude` *(default)* — [Claude Code](https://claude.ai/code)
 - `--antigravity` (alias `--agy`) — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
 - `--ccr` (alias `--claude-code-router`) — [Claude Code Router](https://github.com/musistudio/claude-code-router): run Claude Code against other models — OpenRouter, GLM, DeepSeek, or a local Ollama/LM Studio (see [Providers](#providers))
+- `--codex` — OpenAI's [Codex CLI](https://developers.openai.com/codex/cli) (`codex`), run with your ChatGPT account or API key (see [Providers](#providers))
 
 Why it's safe:
 
@@ -14,7 +15,7 @@ Why it's safe:
 - Host credentials and config are mounted **read-only** and injected into the container's own copies — nothing is ever written back to the host.
 - The image is hardened Ubuntu **26.04 LTS**: root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published.
 
-**Current version: 3.6.0** — see the [CHANGELOG](CHANGELOG.md).
+**Current version: 3.7.0** — see the [CHANGELOG](CHANGELOG.md).
 
 ## Contents
 
@@ -46,6 +47,7 @@ The container ships with a persistent [Homebrew](https://brew.sh) volume (`secur
   - Claude: Claude Code installed and authenticated
   - Antigravity: see [Providers](#providers) for auth options
   - CCR: no host auth needed — just a `~/.claude-code-router/config.json` (scaffolded on first run) and the API key(s) it references, e.g. `OPENROUTER_API_KEY` in your project `.env` (see [Providers](#providers))
+  - Codex: Codex CLI installed and authenticated (`codex login`)
 
 ## Quickstart
 
@@ -68,6 +70,7 @@ bun vibe . --runtime=podman     # force podman
 bun vibe . --command=bash       # open a shell instead of the agent
 bun vibe . --antigravity        # use Google's Antigravity CLI instead of Claude
 bun vibe . --ccr                # route Claude Code to other models via Claude Code Router
+bun vibe . --codex              # use OpenAI's Codex CLI instead of Claude
 bun vibe . --build              # rebuild the image before starting
 bun vibe . --build-no-cache     # rebuild without cache
 bun vibe . --pull               # force-pull the latest image before starting
@@ -83,6 +86,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `--claude` | Use the Claude Code provider (default) |
 | `--antigravity`, `--agy` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
 | `--ccr`, `--claude-code-router` | Use the Claude Code Router (`ccr`) provider — route Claude Code to other models (see [Providers](#providers)) |
+| `--codex` | Use the OpenAI Codex CLI (`codex`) provider (see [Providers](#providers)) |
 | `--local` | (ccr only) Allow the container to reach models running on the host machine (adds a host-gateway DNS entry; no ports, no host network) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
@@ -94,7 +98,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 
 ## Images
 
-Each provider has its own image, published to GHCR as `ghcr.io/loice5/secure-vibe/<provider>:latest` (`claude`, `antigravity`, `ccr`). With no flags, secure-vibe uses the local image if present (checking the registry for updates at most once a day), pulls it if missing, and falls back to building locally from `docker/<provider>.dockerfile` if the pull fails. Use `--pull` to force-pull, or `--build` / `--build-no-cache` to force a local build.
+Each provider has its own image, published to GHCR as `ghcr.io/loice5/secure-vibe/<provider>:latest` (`claude`, `antigravity`, `ccr`, `codex`). With no flags, secure-vibe uses the local image if present (checking the registry for updates at most once a day), pulls it if missing, and falls back to building locally from `docker/<provider>.dockerfile` if the pull fails. Use `--pull` to force-pull, or `--build` / `--build-no-cache` to force a local build.
 
 ## Environment Variables
 
@@ -125,7 +129,7 @@ CLI args take priority over environment variables, which take priority over buil
 
 ## Providers
 
-Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), or `--ccr` (alias `--claude-code-router`). Each has its own image and credential handling; the [brew volume](#persistent-homebrew-volume) is shared. In every case the host config is mounted **read-only** and nothing is written back to the host.
+Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), `--ccr` (alias `--claude-code-router`), or `--codex`. Each has its own image and credential handling; the [brew volume](#persistent-homebrew-volume) is shared. In every case the host config is mounted **read-only** and nothing is written back to the host.
 
 ### Claude (default)
 
@@ -228,6 +232,12 @@ secure-vibe --ccr --local
 
 > If you get *connection refused* reaching a host server bound to `127.0.0.1`, restart it on all interfaces (e.g. `mlx_lm.server --host 0.0.0.0 …`, `OLLAMA_HOST=0.0.0.0 ollama serve`). Small local models (7B/quantized) work for trying things out but are much weaker at Claude Code's tool-heavy, long-context workflows than frontier models. If you only use the cloud provider, drop the `mlx` block and the `background` route and run without `--local`.
 
+### Codex (`codex`)
+
+Log in once on the host (`codex login`, complete the ChatGPT sign-in) — secure-vibe handles the rest, same as Claude. Codex stores its auth as plaintext JSON in `~/.codex/auth.json` on every platform (no keychain), whether it's ChatGPT OAuth tokens or an API key — both work. secure-vibe reads that file, injects it via an environment variable, and writes it to the container's own `~/.codex/auth.json`, so `codex` starts already logged in. The host `~/.codex` is mounted **read-only** for settings; nothing is written back to the host (codex refreshes tokens against the container's copy only).
+
+Codex has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.codex/AGENTS.md` instructions file (in a marker-guarded block). The workspace is pre-trusted in the container's `~/.codex/config.toml` (`trust_level = "trusted"`) so codex skips its "Do you trust this folder?" dialog. Permissions are bypassed with `codex --dangerously-bypass-approvals-and-sandbox` — codex's own sandbox is disabled because the container itself is the sandbox. Use `codex-default` for the vanilla binary with normal approvals.
+
 ## Bun scripts
 
 | Script | Description |
@@ -242,8 +252,9 @@ secure-vibe --ccr --local
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
 | `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
-| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` | Build a provider image locally (append `:no-cache` to any of them to skip the layer cache) |
-| `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` | Pull a provider image from GHCR |
+| `bun run prune:image:codex` | Remove the built Docker image for the Codex provider |
+| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` / `docker:build:codex` | Build a provider image locally (append `:no-cache` to any of them to skip the layer cache) |
+| `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` / `docker:pull:codex` | Pull a provider image from GHCR |
 
 ## Shell completion
 
@@ -294,6 +305,6 @@ If an excluded file is **not** gitignored, a warning is printed — the move is 
 ## Security notes
 
 - **Blocked mounts.** System paths cannot be used as the working directory: `~`, `/`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/var`, `/tmp`, `/proc`, `/sys`, `/dev`, and `/boot` are all rejected.
-- **Read-only host config.** Provider config directories (`~/.claude`, `~/.gemini`, `~/.claude-code-router`) are mounted read-only; credentials are injected into the container's own copies and nothing is written back to the host.
+- **Read-only host config.** Provider config directories (`~/.claude`, `~/.gemini`, `~/.claude-code-router`, `~/.codex`) are mounted read-only; credentials are injected into the container's own copies and nothing is written back to the host.
 - **Hardened image.** Root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published. The agent CLIs and `bun` are image layers; user packages are installed rootless via brew.
 - **Git identity.** Your host `user.name` / `user.email` are forwarded into the container (via `GIT_USER_NAME` / `GIT_USER_EMAIL`) so commits made inside are attributed to you; if none is configured, it falls back to `Claude <noreply@anthropic.com>`.
