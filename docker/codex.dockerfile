@@ -55,10 +55,6 @@ RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
 # a normal image layer, NOT the shadowed brew volume, so there's no seed-ordering risk.
 RUN bun install -g @openai/codex@0.142.5
 
-# Fail fast at build time if the bun-installed bin doesn't resolve its
-# platform-native binary (optional-dependency resolution differs per arch).
-RUN codex --version
-
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
 
 # /home/viber/bin sits ahead of ~/.bun/bin so our wrapper shadows the real binary
@@ -72,6 +68,12 @@ ENV PATH="/home/viber/bin:/home/viber/.bun/bin:${PATH}"
 # escape hatch — run without a real node.
 RUN printf '#!/usr/bin/env bash\nexec bun "$@"\n' > /home/viber/bin/node \
     && chmod +x /home/viber/bin/node
+
+# Fail fast at build time if the bun-installed bin doesn't resolve its
+# platform-native binary (optional-dependency resolution differs per arch).
+# Must come after the node shim (codex's bin script needs a `node` on PATH)
+# and before the wrapper below shadows `codex`.
+RUN codex --version
 
 # Wrapper adds --dangerously-bypass-approvals-and-sandbox (the container is the sandbox).
 COPY --chown=viber:viber src/assets/codex-wrapper.sh /home/viber/bin/codex
