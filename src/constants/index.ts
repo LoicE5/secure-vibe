@@ -24,3 +24,10 @@ export {
   CCR_IMAGE_CHECK_PATH,
   CCR_DOCKERFILE_PATH
 } from "./providers/ccr"
+export {
+  CODEX_DIR,
+  CODEX_AUTH_PATH,
+  CODEX_IMAGE_NAME,
+  CODEX_IMAGE_CHECK_PATH,
+  CODEX_DOCKERFILE_PATH
+} from "./providers/codex"

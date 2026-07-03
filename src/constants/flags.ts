@@ -41,13 +41,14 @@ export const PROVIDER_FLAGS: Record<string, ProviderId> = {
   "--antigravity": "antigravity",
   "--agy": "antigravity",
   "--ccr": "ccr",
-  "--claude-code-router": "ccr"
+  "--claude-code-router": "ccr",
+  "--codex": "codex"
 }
 
 /**
- * Provider flags surfaced by tab-completion. Only "claude", "antigravity", and "ccr"
- * have runners today (the rest are reserved), so we don't offer users non-working options.
+ * Provider flags surfaced by tab-completion. Only "claude", "antigravity", "ccr", and
+ * "codex" have runners today (the rest are reserved), so we don't offer users non-working options.
  */
 export const COMPLETABLE_PROVIDER_FLAGS: readonly string[] = [
-  "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router"
+  "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router", "--codex"
 ]
