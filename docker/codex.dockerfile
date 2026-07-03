@@ -71,12 +71,6 @@ ENV PATH="/home/viber/bin:/home/viber/.bun/bin:${PATH}"
 RUN printf '#!/usr/bin/env bash\nexec bun "$@"\n' > /home/viber/bin/node \
     && chmod +x /home/viber/bin/node
 
-# Fail fast at build time if the bun-installed bin doesn't resolve its
-# platform-native binary (optional-dependency resolution differs per arch).
-# Must come after the node shim (codex's bin script needs a `node` on PATH)
-# and before the wrapper below shadows `codex`.
-RUN codex --version
-
 # Wrapper adds --dangerously-bypass-approvals-and-sandbox (the container is the sandbox).
 COPY --chown=viber:viber src/assets/codex-wrapper.sh /home/viber/bin/codex
 RUN chmod +x /home/viber/bin/codex

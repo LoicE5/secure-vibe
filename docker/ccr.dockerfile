@@ -57,8 +57,6 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Install claude-code-router with bun (no npm, no node). Lands in /home/viber/.bun —
 # a normal image layer, NOT the shadowed brew volume, so there's no seed-ordering risk.
-# Unpinned on purpose: the weekly no-cache CI rebuild picks up the latest CCR,
-# same as the curl installer for claude above.
 RUN bun install -g @musistudio/claude-code-router
 
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
