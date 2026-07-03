@@ -8,6 +8,7 @@
 - Inject the sandbox system prompt into codex via `~/.codex/AGENTS.md` (codex has no `--append-system-prompt` flag; the global instructions file is prepended to every session)
 - Whitelist the workspace in codex's own trust store (`[projects."/home/viber/app"]` with `trust_level = "trusted"` in `~/.codex/config.toml`) so it skips the "Do you trust this folder?" dialog
 - Bypass approvals with `codex --dangerously-bypass-approvals-and-sandbox` via the `/home/viber/bin/codex` wrapper — codex's own sandbox is disabled because the container itself is the sandbox; `codex-default` is the vanilla escape hatch with normal approvals
+- Unpin `@musistudio/claude-code-router` in the CCR image (was `2.0.0`, which is still the latest today, so no version ever differed) — the weekly no-cache rebuild now picks up new CCR releases, matching the unpinned installs of every other provider CLI
 
 ## 3.6.0
 
