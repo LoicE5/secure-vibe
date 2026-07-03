@@ -3,8 +3,10 @@ FROM ubuntu:26.04
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # ── Root phase: system-level setup only ──────────────────────────────────────
-# bubblewrap backs codex's own Linux sandbox — only exercised by codex-default
-# (the main wrapper bypasses the sandbox; the container is the sandbox).
+# bubblewrap backs codex's own Linux sandbox. Both wrappers disable that sandbox
+# (user namespaces aren't creatable in the container; the container is the
+# sandbox), but ship the distro bwrap for anyone opting back in on a runtime
+# that does permit them.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
@@ -84,8 +86,11 @@ RUN codex --version
 COPY --chown=viber:viber src/assets/codex-wrapper.sh /home/viber/bin/codex
 RUN chmod +x /home/viber/bin/codex
 
-# Save the vanilla codex command into a symlink (escape hatch)
-RUN ln -s /home/viber/.bun/bin/codex /home/viber/bin/codex-default
+# Escape hatch with normal approval prompts. A wrapper, not a symlink: it must
+# add --sandbox danger-full-access because bubblewrap can't create user
+# namespaces in the container (sandboxed commands would all fail).
+COPY --chown=viber:viber src/assets/codex-default.sh /home/viber/bin/codex-default
+RUN chmod +x /home/viber/bin/codex-default
 
 # Auto-start + PATH re-assertion appended to .bashrc. The SHLVL guard ensures
 # auto-start fires only on the outermost bash, not on sub-shells.
