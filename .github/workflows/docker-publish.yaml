@@ -29,6 +29,9 @@ jobs:
           - provider: ccr
             image: secure-vibe/ccr
             dockerfile: docker/ccr.dockerfile
+          - provider: codex
+            image: secure-vibe/codex
+            dockerfile: docker/codex.dockerfile
 
     steps:
       - name: Checkout

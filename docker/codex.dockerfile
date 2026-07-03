@@ -42,7 +42,7 @@ RUN brew update && \
 
 # Install bun from its official installer into ~/.bun (a normal image layer, NOT the
 # brew volume). bun is this container's PID 1 (ENTRYPOINT below) AND the build step that
-# installs CCR below runs through it, so it must never live under /home/linuxbrew, which
+# installs codex below runs through it, so it must never live under /home/linuxbrew, which
 # the resettable secure-vibe-brew volume shadows at runtime.
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/home/viber/.bun/bin:${PATH}"
@@ -51,59 +51,41 @@ ENV PATH="/home/viber/.bun/bin:${PATH}"
 # on first run even though /home/linuxbrew will be shadowed by a named volume.
 RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
 
-# Install the native Claude CLI (claude.ai/install.sh → ~/.local/bin). `ccr code`
-# launches it; our wrapper below adds the bypass flags + sandbox prompt.
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# Install claude-code-router with bun (no npm, no node). Lands in /home/viber/.bun —
+# Install the Codex CLI with bun (no npm, no node). Lands in /home/viber/.bun —
 # a normal image layer, NOT the shadowed brew volume, so there's no seed-ordering risk.
-RUN bun install -g @musistudio/claude-code-router
+# Unpinned on purpose: the weekly no-cache CI rebuild picks up the latest codex,
+# same as the curl installers in the claude/antigravity images.
+RUN bun install -g @openai/codex
 
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
 
-# Starter config for the fallback scaffold path in the entrypoint (when no host config is
-# mounted). Same single source the host runner imports, so the two scaffolds never drift.
-COPY --chown=viber:viber src/assets/ccr-starter-config.json /home/viber/.ccr-starter-config.json
-
-# /home/viber/bin sits ahead of ~/.local/bin and ~/.bun/bin so our wrappers shadow the
-# real binaries on PATH — covers interactive shell, auto-start, AND the explicit-command
+# /home/viber/bin sits ahead of ~/.bun/bin so our wrapper shadows the real binary
+# on PATH — covers interactive shell, auto-start, AND the explicit-command
 # entrypoint path (which never sources .bashrc).
 RUN mkdir -p /home/viber/bin
-ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PATH}"
+ENV PATH="/home/viber/bin:/home/viber/.bun/bin:${PATH}"
 
-# node→bun shim: CCR's `ccr` bin has a `#!/usr/bin/env node` shebang. We launch it via
-# `bun --bun` (the wrapper) which already aliases node→bun, but this shim covers any
-# `node` invocation CCR makes internally, so a real node is never needed.
+# node→bun shim: codex's bin script has a `#!/usr/bin/env node` shebang (it dispatches
+# to the platform-native rust binary). The shim lets it — and the codex-default
+# escape hatch — run without a real node.
 RUN printf '#!/usr/bin/env bash\nexec bun "$@"\n' > /home/viber/bin/node \
     && chmod +x /home/viber/bin/node
 
-# Command model — every entry point routes through CCR (a direct-to-Anthropic claude
-# would defeat this container); they differ only in permission posture:
-#   claude, ccr      → `ccr code` WITH --dangerously-skip-permissions  (ccr-wrapper.sh)
-#   claude-default   → `ccr code` WITHOUT bypass, normal prompts        (ccr-claude-default.sh)
-# Each routing wrapper exports a different $CLAUDE_PATH; `ccr code` spawns that inner
-# wrapper, which calls the REAL claude by absolute path (so no wrapper ever recurses).
-# Both inner wrappers append the sandbox T&Cs prompt.
-COPY --chown=viber:viber src/assets/claude-bypass.sh /home/viber/bin/claude-bypass
-COPY --chown=viber:viber src/assets/claude-nobypass.sh /home/viber/bin/claude-nobypass
-COPY --chown=viber:viber src/assets/ccr-wrapper.sh /home/viber/bin/claude
-COPY --chown=viber:viber src/assets/ccr-wrapper.sh /home/viber/bin/ccr
-COPY --chown=viber:viber src/assets/ccr-claude-default.sh /home/viber/bin/claude-default
-RUN chmod +x /home/viber/bin/claude-bypass /home/viber/bin/claude-nobypass \
-        /home/viber/bin/claude /home/viber/bin/ccr /home/viber/bin/claude-default
+# Wrapper adds --dangerously-bypass-approvals-and-sandbox (the container is the sandbox).
+COPY --chown=viber:viber src/assets/codex-wrapper.sh /home/viber/bin/codex
+RUN chmod +x /home/viber/bin/codex
 
-# Safe default if anything reaches `ccr code` without going through a routing wrapper
-# (the wrappers override it per-command).
-ENV CLAUDE_PATH="/home/viber/bin/claude-bypass"
-
-# Escape-hatch symlink to the raw ccr binary for debugging.
-RUN ln -s /home/viber/.bun/bin/ccr /home/viber/bin/ccr-default
+# Escape hatch with normal approval prompts. A wrapper, not a symlink: it must
+# add --sandbox danger-full-access because bubblewrap can't create user
+# namespaces in the container (sandboxed commands would all fail).
+COPY --chown=viber:viber src/assets/codex-default.sh /home/viber/bin/codex-default
+RUN chmod +x /home/viber/bin/codex-default
 
 # Auto-start + PATH re-assertion appended to .bashrc. The SHLVL guard ensures
 # auto-start fires only on the outermost bash, not on sub-shells.
-COPY --chown=viber:viber src/assets/ccr-bashrc-append.sh /tmp/bashrc-append.sh
+COPY --chown=viber:viber src/assets/codex-bashrc-append.sh /tmp/bashrc-append.sh
 RUN cat /tmp/bashrc-append.sh >> /home/viber/.bashrc && rm /tmp/bashrc-append.sh
 
-COPY --chown=viber:viber src/entrypoints/ccr.ts /home/viber/entrypoint.ts
+COPY --chown=viber:viber src/entrypoints/codex.ts /home/viber/entrypoint.ts
 
 ENTRYPOINT ["bun", "/home/viber/entrypoint.ts"]

@@ -1,5 +1,5 @@
 {
-  "version": "3.6.0",
+  "version": "3.7.0",
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
@@ -19,12 +19,16 @@
     "docker:build:ccr": "docker build -f docker/ccr.dockerfile -t ghcr.io/loice5/secure-vibe/ccr:latest .",
     "docker:build:ccr:no-cache": "docker build --no-cache -f docker/ccr.dockerfile -t ghcr.io/loice5/secure-vibe/ccr:latest .",
     "docker:pull:ccr": "docker pull ghcr.io/loice5/secure-vibe/ccr:latest",
+    "docker:build:codex": "docker build -f docker/codex.dockerfile -t ghcr.io/loice5/secure-vibe/codex:latest .",
+    "docker:build:codex:no-cache": "docker build --no-cache -f docker/codex.dockerfile -t ghcr.io/loice5/secure-vibe/codex:latest .",
+    "docker:pull:codex": "docker pull ghcr.io/loice5/secure-vibe/codex:latest",
     "setup:alias": "bun scripts/alias.ts",
     "setup:completion": "bun scripts/completion.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
     "prune:image:claude": "docker rmi ghcr.io/loice5/secure-vibe/claude:latest",
     "prune:image:antigravity": "docker rmi ghcr.io/loice5/secure-vibe/antigravity:latest",
-    "prune:image:ccr": "docker rmi ghcr.io/loice5/secure-vibe/ccr:latest"
+    "prune:image:ccr": "docker rmi ghcr.io/loice5/secure-vibe/ccr:latest",
+    "prune:image:codex": "docker rmi ghcr.io/loice5/secure-vibe/codex:latest"
   },
   "devDependencies": {
     "@types/bun": "latest"
