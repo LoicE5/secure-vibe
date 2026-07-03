@@ -3,10 +3,6 @@ FROM ubuntu:26.04
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # ── Root phase: system-level setup only ──────────────────────────────────────
-# bubblewrap backs codex's own Linux sandbox. Both wrappers disable that sandbox
-# (user namespaces aren't creatable in the container; the container is the
-# sandbox), but ship the distro bwrap for anyone opting back in on a runtime
-# that does permit them.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
@@ -14,7 +10,6 @@ RUN apt-get update \
         build-essential \
         ca-certificates \
         unzip \
-        bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
 # Rename the built-in ubuntu user/group (UID/GID 1000) to viber and move its home.
