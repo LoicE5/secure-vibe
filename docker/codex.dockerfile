@@ -56,7 +56,9 @@ RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
 
 # Install the Codex CLI with bun (no npm, no node). Lands in /home/viber/.bun —
 # a normal image layer, NOT the shadowed brew volume, so there's no seed-ordering risk.
-RUN bun install -g @openai/codex@0.142.5
+# Unpinned on purpose: the weekly no-cache CI rebuild picks up the latest codex,
+# same as the curl installers in the claude/antigravity images.
+RUN bun install -g @openai/codex
 
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
 

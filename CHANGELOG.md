@@ -4,7 +4,7 @@
 
 - Add OpenAI's **Codex CLI** (`codex`) as a selectable provider via `--codex` (or `--gpt`), alongside `--claude`, `--antigravity`, and `--ccr`: its own container image (`ghcr.io/loice5/secure-vibe/codex`), Dockerfile, entrypoint, and `docker:build:codex` / `docker:pull:codex` / `prune:image:codex` scripts. Runs with your ChatGPT account or an OpenAI API key
 - Start codex pre-authenticated: read the host's plaintext `~/.codex/auth.json` (ChatGPT OAuth tokens or API key — codex uses no keychain on any platform), inject it via env, and write it to the container's own `~/.codex/auth.json` (mode `600`) so the session starts logged in. `~/.codex` is mounted **read-only**; nothing is written back to the host
-- Install codex with `bun` (no npm, no node) into `~/.bun`, pinned to `@openai/codex@0.142.5`, with a `node`→`bun` shim for its bin script and a `codex --version` build-time smoke check
+- Install codex with `bun` (no npm, no node) into `~/.bun` — unpinned, so the weekly image rebuild always ships the latest codex — with a `node`→`bun` shim for its bin script and a `codex --version` build-time smoke check
 - Inject the sandbox system prompt into codex via `~/.codex/AGENTS.md` (codex has no `--append-system-prompt` flag; the global instructions file is prepended to every session)
 - Whitelist the workspace in codex's own trust store (`[projects."/home/viber/app"]` with `trust_level = "trusted"` in `~/.codex/config.toml`) so it skips the "Do you trust this folder?" dialog
 - Bypass approvals with `codex --dangerously-bypass-approvals-and-sandbox` via the `/home/viber/bin/codex` wrapper — codex's own sandbox is disabled because the container itself is the sandbox; `codex-default` is the vanilla escape hatch with normal approvals
