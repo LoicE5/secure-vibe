@@ -234,9 +234,9 @@ secure-vibe --ccr --local
 
 ### Codex (`codex`)
 
-Log in once on the host (`codex login`, complete the ChatGPT sign-in) — secure-vibe handles the rest, same as Claude. Codex stores its auth as plaintext JSON in `~/.codex/auth.json` on every platform (no keychain), whether it's ChatGPT OAuth tokens or an API key — both work. secure-vibe reads that file, injects it via an environment variable, and writes it to the container's own `~/.codex/auth.json`, so `codex` starts already logged in. The host `~/.codex` is mounted **read-only** for settings; nothing is written back to the host (codex refreshes tokens against the container's copy only).
+Log in once on the host with `codex login`; secure-vibe reads `~/.codex/auth.json`, injects it into the container, and writes it to the container's own `~/.codex/auth.json`. The host `~/.codex` is mounted **read-only** for settings, so token refreshes and Codex state stay inside the container copy.
 
-Codex has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.codex/AGENTS.md` instructions file (in a marker-guarded block). The workspace is pre-trusted in the container's `~/.codex/config.toml` (`trust_level = "trusted"`) so codex skips its "Do you trust this folder?" dialog. Permissions are bypassed with `codex --dangerously-bypass-approvals-and-sandbox` — codex's own sandbox is disabled because the container itself is the sandbox. Use `codex-default` for normal approval prompts; it also runs with codex's OS sandbox off (`--sandbox danger-full-access`), since bubblewrap can't create the user namespaces it needs inside a container.
+Because Codex does not support an append-system-prompt flag, secure-vibe injects the sandbox instructions through the container's global `~/.codex/AGENTS.md`. The workspace is pre-trusted, and the default `codex` wrapper runs with `--dangerously-bypass-approvals-and-sandbox` because the container is the sandbox. Use `codex-default` for normal approval prompts.
 
 ## Bun scripts
 
