@@ -7,7 +7,7 @@ Four providers are supported, selected with a flag:
 - `--claude` *(default)* — [Claude Code](https://claude.ai/code)
 - `--antigravity` (alias `--agy`) — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
 - `--ccr` (alias `--claude-code-router`) — [Claude Code Router](https://github.com/musistudio/claude-code-router): run Claude Code against other models — OpenRouter, GLM, DeepSeek, or a local Ollama/LM Studio (see [Providers](#providers))
-- `--codex` — OpenAI's [Codex CLI](https://developers.openai.com/codex/cli) (`codex`), run with your ChatGPT account or API key (see [Providers](#providers))
+- `--codex` (alias `--gpt`) — OpenAI's [Codex CLI](https://developers.openai.com/codex/cli) (`codex`), run with your ChatGPT account or API key (see [Providers](#providers))
 
 Why it's safe:
 
@@ -86,7 +86,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `--claude` | Use the Claude Code provider (default) |
 | `--antigravity`, `--agy` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
 | `--ccr`, `--claude-code-router` | Use the Claude Code Router (`ccr`) provider — route Claude Code to other models (see [Providers](#providers)) |
-| `--codex` | Use the OpenAI Codex CLI (`codex`) provider (see [Providers](#providers)) |
+| `--codex`, `--gpt` | Use the OpenAI Codex CLI (`codex`) provider (see [Providers](#providers)) |
 | `--local` | (ccr only) Allow the container to reach models running on the host machine (adds a host-gateway DNS entry; no ports, no host network) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
@@ -129,7 +129,7 @@ CLI args take priority over environment variables, which take priority over buil
 
 ## Providers
 
-Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), `--ccr` (alias `--claude-code-router`), or `--codex`. Each has its own image and credential handling; the [brew volume](#persistent-homebrew-volume) is shared. In every case the host config is mounted **read-only** and nothing is written back to the host.
+Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), `--ccr` (alias `--claude-code-router`), or `--codex` (alias `--gpt`). Each has its own image and credential handling; the [brew volume](#persistent-homebrew-volume) is shared. In every case the host config is mounted **read-only** and nothing is written back to the host.
 
 ### Claude (default)
 

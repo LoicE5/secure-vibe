@@ -35,14 +35,15 @@ export const FLAGS: readonly FlagSpec[] = [
   { name: "--exclude", kind: "value", key: "exclude" }
 ]
 
-/** Maps each provider-selection flag (and its aliases) to a ProviderId. `--agy` is a shorthand for `--antigravity`. */
+/** Maps each provider-selection flag (and its aliases) to a ProviderId. `--agy` is a shorthand for `--antigravity`, `--gpt` for `--codex`. */
 export const PROVIDER_FLAGS: Record<string, ProviderId> = {
   "--claude": "claude",
   "--antigravity": "antigravity",
   "--agy": "antigravity",
   "--ccr": "ccr",
   "--claude-code-router": "ccr",
-  "--codex": "codex"
+  "--codex": "codex",
+  "--gpt": "codex"
 }
 
 /**
@@ -50,5 +51,5 @@ export const PROVIDER_FLAGS: Record<string, ProviderId> = {
  * "codex" have runners today (the rest are reserved), so we don't offer users non-working options.
  */
 export const COMPLETABLE_PROVIDER_FLAGS: readonly string[] = [
-  "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router", "--codex"
+  "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router", "--codex", "--gpt"
 ]
