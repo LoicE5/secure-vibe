@@ -1,4 +1,5 @@
 import { access } from "fs/promises"
+import { homedir } from "os"
 import type { Runtime, GitIdentity } from "../../types"
 import { VIBE_DIR } from "../../constants"
 import { spawnContainer, type ExtraMount } from "../../utils/container"
@@ -22,13 +23,11 @@ export interface RunVibeContainerOptions {
 export async function runVibeContainer(options: RunVibeContainerOptions): Promise<number> {
   const apiKey = await resolveVibeCredentials()
 
-  // vibe resolves keys process-env-first inside the container, so this always wins
-  // over anything mirrored from the host's ~/.vibe. Nothing is written back to the host.
-  // VIBE_HOST_DIR tells the entrypoint the host's ~/.vibe absolute path so it can remap
-  // host paths baked into the mirrored config.toml (e.g. session_logging.save_dir).
+  // vibe reads MISTRAL_API_KEY process-env-first, so it beats anything mirrored from the
+  // host. SECURE_VIBE_HOST_HOME lets the entrypoint remap host paths baked into config.toml.
   const extraEnv: Record<string, string> = {
     MISTRAL_API_KEY: apiKey,
-    VIBE_HOST_DIR: VIBE_DIR
+    SECURE_VIBE_HOST_HOME: homedir()
   }
 
   const vibeDirExists = await access(VIBE_DIR).then(() => true).catch(() => false)

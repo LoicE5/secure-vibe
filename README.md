@@ -245,7 +245,7 @@ Because Codex does not support an append-system-prompt flag, secure-vibe injects
 
 ### Mistral Vibe (`vibe`)
 
-Sign in once on the host (run `vibe` — its wizard stores the key in the OS keyring, or `~/.vibe/.env` as a fallback). secure-vibe resolves the key in vibe's own order — `MISTRAL_API_KEY` env var → OS keyring (macOS Keychain / Linux Secret Service) → `~/.vibe/.env` — and injects it into the container as `MISTRAL_API_KEY`, which vibe reads directly. The host `~/.vibe` is mounted **read-only** for settings, so logs, sessions, and Vibe state stay inside the container copy.
+Sign in once on the host (run `vibe` — its wizard stores the key in the OS keyring, or `~/.vibe/.env` as a fallback). secure-vibe resolves the key in vibe's own order — `MISTRAL_API_KEY` env var → OS keyring (macOS Keychain / Linux Secret Service, the latter needs `libsecret-tools` on the host) → `~/.vibe/.env` — and injects it into the container as `MISTRAL_API_KEY`, which vibe reads directly. The host `~/.vibe` is mounted **read-only** for settings, so logs, sessions, and Vibe state stay inside the container copy.
 
 Because Vibe does not support an append-system-prompt flag, secure-vibe injects the sandbox instructions through the container's user-level `~/.vibe/AGENTS.md`. The workspace is pre-trusted (`trusted_folders.toml`), and the default `vibe` wrapper runs with `--yolo` because the container is the sandbox. Use `vibe-default` for normal tool-approval prompts.
 

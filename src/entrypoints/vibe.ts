@@ -3,17 +3,14 @@
  *
  * Runs every time the Vibe provider container starts. Responsibilities:
  *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
- *   2. Mirror the read-only ~/.vibe-host mount into a writable copy, remapping
- *      host-absolute ~/.vibe paths inside the mirrored config.toml ($VIBE_HOST_DIR →
- *      container ~/.vibe) so vibe doesn't crash mkdir-ing host paths like
- *      session_logging.save_dir. No credential file is written: the host runner
- *      injects $MISTRAL_API_KEY, and vibe resolves keys process-env-first (its
- *      ~/.vibe/.env load never overrides existing vars, and its keyring lookup
- *      fails gracefully without a daemon).
+ *   2. Mirror the read-only ~/.vibe-host mount into a writable copy (skipping the
+ *      potentially huge log tree), then remap host-home paths baked into the mirrored
+ *      config.toml ($SECURE_VIBE_HOST_HOME → /home/viber) so vibe doesn't crash
+ *      mkdir-ing host paths like session_logging.save_dir. No credential file is
+ *      written: the host runner injects $MISTRAL_API_KEY, which vibe reads
+ *      process-env-first.
  *   3. Whitelist the workspace by adding "/home/viber/app" to the trusted array in
- *      ~/.vibe/trusted_folders.toml so vibe skips its workspace-trust dialog. The
- *      insert is idempotent and splices into an existing `trusted = [` array when
- *      the mirrored host file has one (a second top-level key would be invalid TOML).
+ *      ~/.vibe/trusted_folders.toml so vibe skips its workspace-trust dialog.
  *   4. Inject the sandbox prompt into ~/.vibe/AGENTS.md (vibe has no
  *      --append-system-prompt flag; the user-level AGENTS.md is loaded into every
  *      session's system prompt). Marker-guarded so it's idempotent and keeps any
@@ -54,14 +51,15 @@ if(!brewReady) {
 const HOME_DIR = "/home/viber"
 const VIBE_DIR = `${HOME_DIR}/.vibe`
 
-// Copy a read-only host mount into a writable copy (vibe writes logs/history/cache).
-// dotglob so hidden files come along; the host stays untouched.
+// Copy a read-only host mount into a writable copy, skipping the log tree (vibe's
+// session logs live in ~/.vibe/logs and can be huge; nothing in-container reads them).
+// chmod guarantees the copy is writable even if host files weren't; the host stays untouched.
 async function mirror(hostDir: string, targetDir: string): Promise<void> {
   const hostExists = await access(hostDir).then(() => true).catch(() => false)
   if(!hostExists) return
   await mkdir(targetDir, { recursive: true })
   const cpProc = Bun.spawn(
-    ["bash", "-c", `shopt -s dotglob nullglob; cp -rp "${hostDir}/"* "${targetDir}/" 2>/dev/null; true`],
+    ["bash", "-c", `find "${hostDir}" -mindepth 1 -maxdepth 1 ! -name logs -exec cp -rp -t "${targetDir}" {} + 2>/dev/null; chmod -R u+w "${targetDir}" 2>/dev/null; true`],
     { stdout: "pipe", stderr: "pipe" }
   )
   await cpProc.exited
@@ -69,49 +67,44 @@ async function mirror(hostDir: string, targetDir: string): Promise<void> {
 
 await mirror(`${HOME_DIR}/.vibe-host`, VIBE_DIR)
 
-// The mirrored host config.toml can carry absolute host paths under the host's
-// ~/.vibe — vibe's setup writes session_logging.save_dir that way — and vibe
-// crashes at startup trying to mkdir them (e.g. /Users/loic/.vibe/logs/session).
-// The runner passes the host's ~/.vibe path in $VIBE_HOST_DIR; remap every
-// occurrence to the container's ~/.vibe, which we mirrored.
-const hostVibeDir = process.env.VIBE_HOST_DIR
-if(hostVibeDir && hostVibeDir !== VIBE_DIR) {
+// The mirrored config.toml carries absolute host paths (vibe's setup writes
+// session_logging.save_dir that way) and vibe crashes at startup mkdir-ing them.
+// Remap host-home-prefixed paths to the container home; the lookahead keeps
+// sibling prefixes (e.g. ~/.vibe-backups vs ~/.vibe) intact.
+const hostHome = process.env.SECURE_VIBE_HOST_HOME
+if(hostHome) {
   const configPath = `${VIBE_DIR}/config.toml`
   const config = await readFile(configPath, "utf-8").catch(() => "")
-  if(config.includes(hostVibeDir)) {
-    await writeFile(configPath, config.replaceAll(hostVibeDir, VIBE_DIR), { mode: 0o600 })
+  const escapedHostHome = hostHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const remapped = config.replace(new RegExp(`${escapedHostHome}(?=["'/])`, "g"), HOME_DIR)
+  if(remapped !== config) {
+    await writeFile(configPath, remapped, { mode: 0o600 })
   }
 }
 
-// The host runner injects the API key as an env var; vibe reads it directly
-// (process env beats ~/.vibe/.env and the keyring), so no file write is needed.
+// The host runner injects the API key as an env var, which vibe reads directly.
 if(!process.env.MISTRAL_API_KEY) {
   console.warn("  [entrypoint] MISTRAL_API_KEY not set — vibe will prompt for authentication.")
 }
 
-// Whitelist the workspace so vibe skips its workspace-trust dialog (shown when the
-// repo carries agent-influencing files like AGENTS.md or .vibe/). Trust lives in
-// ~/.vibe/trusted_folders.toml as a top-level `trusted = [...]` string array with
-// ancestor matching. No TOML parser here: when the mirrored host file already has a
-// `trusted = [` array we splice the path in right after the bracket (appending a
-// second top-level key would be invalid TOML); otherwise we append/create the array.
-// The substring check keeps it idempotent.
+// Whitelist the workspace so vibe skips its workspace-trust dialog. Trust lives in
+// ~/.vibe/trusted_folders.toml as top-level `trusted`/`untrusted` string arrays; vibe
+// checks trusted first, so splicing into it wins even if the host denied the same path.
+// No TOML parser here: splice into an existing `trusted = [` array (a second top-level
+// key would be invalid TOML), else append/create it. Both regexes are ^-anchored so
+// `untrusted = [` never matches, and the idempotency check is scoped to the trusted array.
 const APP_DIR = "/home/viber/app"
 const trustedFoldersPath = `${VIBE_DIR}/trusted_folders.toml`
 const existingTrust = await readFile(trustedFoldersPath, "utf-8").catch(() => "")
-if(!existingTrust.includes(`"${APP_DIR}"`)) {
-  // ^-anchored (multiline) so `untrusted = [` — the deny list — can never match.
-  const arrayMatch = existingTrust.match(/^[ \t]*trusted\s*=\s*\[/m)
-  let merged: string
-  if(arrayMatch) {
-    const insertAt = arrayMatch.index! + arrayMatch[0].length
-    merged = `${existingTrust.slice(0, insertAt)}"${APP_DIR}", ${existingTrust.slice(insertAt)}`
-  } else {
-    const trustBlock = `trusted = ["${APP_DIR}"]\n`
-    merged = existingTrust
+const trustedArray = existingTrust.match(/^[ \t]*trusted\s*=\s*\[[^\]]*/m)?.at(0) ?? ""
+if(!trustedArray.includes(`"${APP_DIR}"`)) {
+  const spliced = existingTrust.replace(/^([ \t]*trusted\s*=\s*\[)/m, `$1"${APP_DIR}", `)
+  const trustBlock = `trusted = ["${APP_DIR}"]\n`
+  const merged = spliced !== existingTrust
+    ? spliced
+    : existingTrust
       ? `${existingTrust.replace(/\s*$/, "")}\n\n${trustBlock}`
       : trustBlock
-  }
   await mkdir(VIBE_DIR, { recursive: true })
   await writeFile(trustedFoldersPath, merged, { mode: 0o600 })
 }
