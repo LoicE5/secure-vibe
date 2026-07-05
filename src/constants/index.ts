@@ -31,3 +31,9 @@ export {
   CODEX_IMAGE_CHECK_PATH,
   CODEX_DOCKERFILE_PATH
 } from "./providers/codex"
+export {
+  VIBE_DIR,
+  VIBE_IMAGE_NAME,
+  VIBE_IMAGE_CHECK_PATH,
+  VIBE_DOCKERFILE_PATH
+} from "./providers/vibe"

@@ -1,6 +1,6 @@
 import { access, constants, readFile } from "fs/promises"
-import { $ } from "bun"
 import { AGY_TOKEN_HOST_FILE } from "../../constants"
+import { readKeyringSecret } from "../../utils/keyring"
 
 export interface AntigravityCredentials {
   /** agy OAuth token JSON — entrypoint writes it to the container's token file. */
@@ -48,18 +48,10 @@ export async function resolveAntigravityCredentials(): Promise<AntigravityCreden
 
 /**
  * Reads agy's token from the platform keyring and decodes go-keyring's base64 wrapping.
- * macOS: Keychain via `security`. Linux: Secret Service (gnome-keyring/KWallet) via
- * `secret-tool` when installed. Returns null if unavailable — caller falls back to the file.
+ * Returns null if unavailable — caller falls back to the file.
  */
 async function readOsKeyring(): Promise<string | null> {
-  let raw = ""
-  if(process.platform === "darwin") {
-    raw = await $`security find-generic-password -s ${KEYRING_SERVICE} -a ${KEYRING_ACCOUNT} -w`
-      .text().then(s => s.trim()).catch(() => "")
-  } else if(process.platform === "linux") {
-    raw = await $`secret-tool lookup service ${KEYRING_SERVICE} username ${KEYRING_ACCOUNT}`
-      .text().then(s => s.trim()).catch(() => "")
-  }
+  const raw = await readKeyringSecret(KEYRING_SERVICE, KEYRING_ACCOUNT)
   if(!raw) return null
   return raw.startsWith(KEYRING_BASE64_PREFIX)
     ? Buffer.from(raw.slice(KEYRING_BASE64_PREFIX.length), "base64").toString("utf-8")
