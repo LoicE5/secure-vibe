@@ -7,13 +7,16 @@ import { runCcrContainer } from "./ccr/run-ccr-container"
 import { CCR_PROVIDER_SPEC } from "./ccr/spec"
 import { runCodexContainer } from "./codex/run-codex-container"
 import { CODEX_PROVIDER_SPEC } from "./codex/spec"
+import { runVibeContainer } from "./vibe/run-vibe-container"
+import { VIBE_PROVIDER_SPEC } from "./vibe/spec"
 
 /** Registry mapping each ProviderId to its container runner. */
 export const PROVIDER_RUNNERS: Partial<Record<ProviderId, ProviderRunner>> = {
   claude: runClaudeContainer,
   antigravity: runAntigravityContainer,
   ccr: runCcrContainer,
-  codex: runCodexContainer
+  codex: runCodexContainer,
+  vibe: runVibeContainer
 }
 
 /** Registry mapping each ProviderId to its static spec (image, dockerfile, brew volume). */
@@ -21,7 +24,8 @@ export const PROVIDER_SPECS: Partial<Record<ProviderId, ProviderSpec>> = {
   claude: CLAUDE_PROVIDER_SPEC,
   antigravity: ANTIGRAVITY_PROVIDER_SPEC,
   ccr: CCR_PROVIDER_SPEC,
-  codex: CODEX_PROVIDER_SPEC
+  codex: CODEX_PROVIDER_SPEC,
+  vibe: VIBE_PROVIDER_SPEC
 }
 
 /**
