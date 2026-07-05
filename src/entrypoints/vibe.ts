@@ -83,7 +83,8 @@ const APP_DIR = "/home/viber/app"
 const trustedFoldersPath = `${VIBE_DIR}/trusted_folders.toml`
 const existingTrust = await readFile(trustedFoldersPath, "utf-8").catch(() => "")
 if(!existingTrust.includes(`"${APP_DIR}"`)) {
-  const arrayMatch = existingTrust.match(/trusted\s*=\s*\[/)
+  // ^-anchored (multiline) so `untrusted = [` — the deny list — can never match.
+  const arrayMatch = existingTrust.match(/^[ \t]*trusted\s*=\s*\[/m)
   let merged: string
   if(arrayMatch) {
     const insertAt = arrayMatch.index! + arrayMatch[0].length
