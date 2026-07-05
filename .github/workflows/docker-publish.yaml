@@ -32,6 +32,9 @@ jobs:
           - provider: codex
             image: secure-vibe/codex
             dockerfile: docker/codex.dockerfile
+          - provider: vibe
+            image: secure-vibe/vibe
+            dockerfile: docker/vibe.dockerfile
 
     steps:
       - name: Checkout

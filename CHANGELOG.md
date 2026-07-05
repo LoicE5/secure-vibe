@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.8.0
+
+- Add Mistral's **Vibe CLI** (`vibe`) as a selectable provider via `--vibe` (or `--lechat`, `--mistral`, `--miaou`), alongside `--claude`, `--antigravity`, `--ccr`, and `--codex`: its own container image (`ghcr.io/loice5/secure-vibe/vibe`), Dockerfile, entrypoint, and `docker:build:vibe` / `docker:pull:vibe` / `prune:image:vibe` scripts. Runs with your Mistral account or API key
+- Start vibe pre-authenticated: resolve the host key in vibe's own persistence order — `MISTRAL_API_KEY` env var → OS keyring (macOS Keychain / Linux Secret Service, service `ai.mistral.vibe`) → `~/.vibe/.env` — and inject it as `MISTRAL_API_KEY`, which vibe reads process-env-first so it always wins in-container. `~/.vibe` is mounted **read-only** (when it exists); nothing is written back to the host
+- Install vibe with its official installer (uv bootstrap + `uv tool install mistral-vibe` + a managed CPython ≥ 3.12) into `~/.local` — image layers, not the shadowed brew volume — unpinned, so the weekly image rebuild always ships the latest vibe, with a `vibe --version` build-time smoke check
+- Inject the sandbox system prompt into vibe via `~/.vibe/AGENTS.md` (vibe has no `--append-system-prompt` flag; the user-level instructions file is loaded into every session's system prompt)
+- Whitelist the workspace in vibe's own trust store (`"/home/viber/app"` in the `trusted` array of `~/.vibe/trusted_folders.toml`) so it skips the workspace-trust dialog
+- Bypass tool approvals with `vibe --yolo` via the `/home/viber/bin/vibe` wrapper — the container itself is the sandbox; `vibe-default` is the escape hatch with normal tool-approval prompts (a plain symlink: vibe has no internal OS sandbox to disable)
+
 ## 3.7.0
 
 - Add OpenAI's **Codex CLI** (`codex`) as a selectable provider via `--codex` (or `--gpt`), alongside `--claude`, `--antigravity`, and `--ccr`: its own container image (`ghcr.io/loice5/secure-vibe/codex`), Dockerfile, entrypoint, and `docker:build:codex` / `docker:pull:codex` / `prune:image:codex` scripts. Runs with your ChatGPT account or an OpenAI API key
