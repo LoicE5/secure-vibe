@@ -35,10 +35,7 @@ export const FLAGS: readonly FlagSpec[] = [
   { name: "--exclude", kind: "value", key: "exclude" }
 ]
 
-/**
- * Maps each provider-selection flag (and its aliases) to a ProviderId. `--agy` is a shorthand
- * for `--antigravity`, `--gpt` for `--codex`; `--lechat`, `--mistral`, and `--miaou` for `--vibe`.
- */
+/** Maps each provider-selection flag (and its aliases) to a ProviderId. */
 export const PROVIDER_FLAGS: Record<string, ProviderId> = {
   "--claude": "claude",
   "--antigravity": "antigravity",
