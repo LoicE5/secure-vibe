@@ -3,10 +3,13 @@
  *
  * Runs every time the Vibe provider container starts. Responsibilities:
  *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
- *   2. Mirror the read-only ~/.vibe-host mount into a writable copy. No credential
- *      file is written: the host runner injects $MISTRAL_API_KEY, and vibe resolves
- *      keys process-env-first (its ~/.vibe/.env load never overrides existing vars,
- *      and its keyring lookup fails gracefully without a daemon).
+ *   2. Mirror the read-only ~/.vibe-host mount into a writable copy, remapping
+ *      host-absolute ~/.vibe paths inside the mirrored config.toml ($VIBE_HOST_DIR →
+ *      container ~/.vibe) so vibe doesn't crash mkdir-ing host paths like
+ *      session_logging.save_dir. No credential file is written: the host runner
+ *      injects $MISTRAL_API_KEY, and vibe resolves keys process-env-first (its
+ *      ~/.vibe/.env load never overrides existing vars, and its keyring lookup
+ *      fails gracefully without a daemon).
  *   3. Whitelist the workspace by adding "/home/viber/app" to the trusted array in
  *      ~/.vibe/trusted_folders.toml so vibe skips its workspace-trust dialog. The
  *      insert is idempotent and splices into an existing `trusted = [` array when
@@ -65,6 +68,20 @@ async function mirror(hostDir: string, targetDir: string): Promise<void> {
 }
 
 await mirror(`${HOME_DIR}/.vibe-host`, VIBE_DIR)
+
+// The mirrored host config.toml can carry absolute host paths under the host's
+// ~/.vibe — vibe's setup writes session_logging.save_dir that way — and vibe
+// crashes at startup trying to mkdir them (e.g. /Users/loic/.vibe/logs/session).
+// The runner passes the host's ~/.vibe path in $VIBE_HOST_DIR; remap every
+// occurrence to the container's ~/.vibe, which we mirrored.
+const hostVibeDir = process.env.VIBE_HOST_DIR
+if(hostVibeDir && hostVibeDir !== VIBE_DIR) {
+  const configPath = `${VIBE_DIR}/config.toml`
+  const config = await readFile(configPath, "utf-8").catch(() => "")
+  if(config.includes(hostVibeDir)) {
+    await writeFile(configPath, config.replaceAll(hostVibeDir, VIBE_DIR), { mode: 0o600 })
+  }
+}
 
 // The host runner injects the API key as an env var; vibe reads it directly
 // (process env beats ~/.vibe/.env and the keyring), so no file write is needed.

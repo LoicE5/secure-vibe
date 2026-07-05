@@ -24,7 +24,12 @@ export async function runVibeContainer(options: RunVibeContainerOptions): Promis
 
   // vibe resolves keys process-env-first inside the container, so this always wins
   // over anything mirrored from the host's ~/.vibe. Nothing is written back to the host.
-  const extraEnv: Record<string, string> = { MISTRAL_API_KEY: apiKey }
+  // VIBE_HOST_DIR tells the entrypoint the host's ~/.vibe absolute path so it can remap
+  // host paths baked into the mirrored config.toml (e.g. session_logging.save_dir).
+  const extraEnv: Record<string, string> = {
+    MISTRAL_API_KEY: apiKey,
+    VIBE_HOST_DIR: VIBE_DIR
+  }
 
   const vibeDirExists = await access(VIBE_DIR).then(() => true).catch(() => false)
   const extraMounts: ExtraMount[] = vibeDirExists
