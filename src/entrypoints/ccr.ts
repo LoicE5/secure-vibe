@@ -282,9 +282,13 @@ function shellQuote(value: string): string {
 
 // BASE_URL/AUTH_TOKEN are hard-set — a stale value means talking to Anthropic directly, which
 // would defeat the container. The model vars use := so `ANTHROPIC_MODEL=x claude` still wins.
+// Without gateway model discovery Claude Code rejects any model id it doesn't recognise —
+// "There's an issue with the selected model … it may not exist" — before sending a request.
+// The gateway answers both /models and /v1/models, which is what discovery needs.
 const envFileLines = [
   `export ANTHROPIC_BASE_URL=${shellQuote(`http://127.0.0.1:${ccrConfig.port}`)}`,
-  `export ANTHROPIC_AUTH_TOKEN=${shellQuote(ccrConfig.apiKey)}`
+  `export ANTHROPIC_AUTH_TOKEN=${shellQuote(ccrConfig.apiKey)}`,
+  "export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1"
 ]
 const modelDefaults: Record<string, string | null> = {
   ANTHROPIC_MODEL: ccrConfig.defaultModel,
@@ -301,7 +305,8 @@ await writeFile(CCR_ENV_PATH, `${envFileLines.join("\n")}\n`, { mode: 0o600 })
 
 const gatewayEnv: Record<string, string> = {
   ANTHROPIC_BASE_URL: `http://127.0.0.1:${ccrConfig.port}`,
-  ANTHROPIC_AUTH_TOKEN: ccrConfig.apiKey
+  ANTHROPIC_AUTH_TOKEN: ccrConfig.apiKey,
+  CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
 }
 for(const [name, value] of Object.entries(modelDefaults)) {
   if(value && !process.env[name]) gatewayEnv[name] = value
