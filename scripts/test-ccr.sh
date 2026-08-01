@@ -86,8 +86,11 @@ if [ "${1:-}" = "--in-container" ]; then
   rm -f /tmp/ccr-tooltest.txt
 
   head_ "Background calls"
-  count=$(grep -c '400' "$HOME/.ccr-serve.log" 2>/dev/null || echo 0)
-  [ "$count" = "0" ] && ok "no 400s in ~/.ccr-serve.log" || bad "$count occurrences of 400 in ~/.ccr-serve.log" "check the Haiku mapping"
+  # grep -c prints 0 AND exits 1 when there is no match, so a `|| echo 0` fallback would
+  # append a second line and make the count "0\n0".
+  count=$(grep -c '400' "$HOME/.ccr-serve.log" 2>/dev/null || true)
+  [ -z "$count" ] && count=0
+  [ "$count" -eq 0 ] 2>/dev/null && ok "no 400s in ~/.ccr-serve.log" || bad "$count occurrences of 400 in ~/.ccr-serve.log" "check the Haiku mapping"
 
   head_ "Config handling"
   [ -f "$HOME/.claude-code-router/config.json" ] \
