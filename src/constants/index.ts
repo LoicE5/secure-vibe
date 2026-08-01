@@ -1,4 +1,4 @@
-export { PROJECT_DIR } from "./paths"
+export { PROJECT_DIR, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME } from "./paths"
 export { VALID_SAVE_MODES, VALID_RUNTIMES, CLEAN_EXIT_CODES, BANNED_DIRS } from "./runtime"
 export { FLAGS, PROVIDER_FLAGS, COMPLETABLE_PROVIDER_FLAGS } from "./flags"
 export type { FlagSpec, BooleanFlag, ValueFlag } from "./flags"

@@ -1,42 +1,14 @@
-FROM ubuntu:26.04
+FROM ghcr.io/loice5/secure-vibe/base:latest
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
+# Not in the base: a real node would defeat the codex image's node-to-bun shim.
 # No npm and no python3 on purpose: pnpm is the package manager, and a missing
 # better-sqlite3 prebuild must fail fast rather than node-gyp-compile under QEMU.
+USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        git \
-        curl \
-        build-essential \
-        ca-certificates \
-        unzip \
         nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-RUN usermod -l viber -d /home/viber -m ubuntu \
-    && groupmod -n viber ubuntu
-
-RUN mkdir -p /home/linuxbrew && chown viber:viber /home/linuxbrew
-
-RUN mkdir -p /opt/linuxbrew-seed && chown viber:viber /opt/linuxbrew-seed
-
-RUN passwd -l root && usermod -s /usr/sbin/nologin root
-
 USER viber
-WORKDIR /home/viber/app
-
-RUN curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash
-
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
-
-RUN brew update && \
-    brew install gcc
-
-# bun is PID 1, so it must live in an image layer and never under /home/linuxbrew,
-# which the resettable secure-vibe-brew volume shadows at runtime.
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/home/viber/.bun/bin:${PATH}"
 
 # The tarball is fetched directly rather than via get.pnpm.io/install.sh, which delegates
 # to `pnpm setup` — a shell-profile editor that does nothing useful in a Dockerfile.
@@ -55,7 +27,8 @@ RUN set -eu \
     && chmod +x "$PNPM_HOME/pnpm" \
     && pnpm --version
 
-RUN cp -a /home/linuxbrew/. /opt/linuxbrew-seed/
+# Re-asserted after PNPM_HOME, whose bin holds a real `ccr` that would shadow the wrapper.
+ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PATH}"
 
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
@@ -71,14 +44,7 @@ RUN set -eu \
     && test -n "$CCR_PKG" \
     && node -e "require(require.resolve('better-sqlite3',{paths:['$(dirname "$CCR_PKG")']}));console.log('better-sqlite3 ok')"
 
-COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
-
 COPY --chown=viber:viber src/assets/ccr-starter-config.json /home/viber/.ccr-starter-config.json
-
-# /home/viber/bin sits first so the wrappers below shadow the real binaries on PATH,
-# including on the explicit-command entrypoint path, which never sources .bashrc.
-RUN mkdir -p /home/viber/bin
-ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PATH}"
 
 # claude and ccr bypass permissions, claude-default keeps the normal prompts.
 COPY --chown=viber:viber src/assets/claude-bypass.sh /home/viber/bin/claude
@@ -100,5 +66,3 @@ COPY --chown=viber:viber src/assets/ccr-bashrc-append.sh /tmp/bashrc-append.sh
 RUN cat /tmp/bashrc-append.sh >> /home/viber/.bashrc && rm /tmp/bashrc-append.sh
 
 COPY --chown=viber:viber src/entrypoints/ccr.ts /home/viber/entrypoint.ts
-
-ENTRYPOINT ["bun", "/home/viber/entrypoint.ts"]

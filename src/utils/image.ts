@@ -1,15 +1,15 @@
 import { mkdir } from "fs/promises"
 import { dirname } from "path"
 import { $ } from "bun"
-import { PROJECT_DIR } from "../constants"
+import { PROJECT_DIR, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME } from "../constants"
 import type { Runtime, ProviderSpec } from "../types"
 
-/** Builds `spec.imageName` from `spec.dockerfilePath`. */
-async function buildImage(runtime: Runtime, spec: ProviderSpec, noCache: boolean): Promise<void> {
+/** Runs one `<runtime> build`, exiting the process on failure. */
+async function runBuild(runtime: Runtime, dockerfile: string, tag: string, noCache: boolean): Promise<void> {
   const buildArgs = [
     runtime, "build",
-    "-f", spec.dockerfilePath,
-    "-t", spec.imageName
+    "-f", dockerfile,
+    "-t", tag
   ]
   if(noCache) buildArgs.push("--no-cache")
   buildArgs.push(PROJECT_DIR)
@@ -22,7 +22,24 @@ async function buildImage(runtime: Runtime, spec: ProviderSpec, noCache: boolean
     process.exit(buildExit ?? 1)
   }
 
-  console.info(`  Image "${spec.imageName}" built successfully.`)
+  console.info(`  Image "${tag}" built successfully.`)
+}
+
+/** Builds `spec.imageName` from `spec.dockerfilePath`, building the shared base first. */
+async function buildImage(runtime: Runtime, spec: ProviderSpec, noCache: boolean): Promise<void> {
+  console.info(`  Building base image "${BASE_IMAGE_NAME}"…`)
+  await runBuild(runtime, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME, noCache)
+
+  await runBuild(runtime, spec.dockerfilePath, spec.imageName, noCache)
+}
+
+/** True when both the provider Dockerfile and the shared base Dockerfile are present. */
+async function dockerfilesAvailable(spec: ProviderSpec): Promise<boolean> {
+  const [provider, base] = await Promise.all([
+    Bun.file(spec.dockerfilePath).exists(),
+    Bun.file(BASE_DOCKERFILE_PATH).exists()
+  ])
+  return provider && base
 }
 
 /** Pulls `spec.imageName` from its registry. Returns true on success. */
@@ -106,8 +123,8 @@ export async function ensureImage(
   pull = false
 ): Promise<void> {
   if(build || buildNoCache) {
-    if(!(await Bun.file(spec.dockerfilePath).exists())) {
-      console.error(`✗ --build is only available when running from the project source directory. Dockerfile not found at: ${spec.dockerfilePath}`)
+    if(!(await dockerfilesAvailable(spec))) {
+      console.error(`✗ --build is only available when running from the project source directory. Dockerfiles not found at: ${spec.dockerfilePath} and ${BASE_DOCKERFILE_PATH}`)
       process.exit(1)
     }
     console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${spec.imageName}"…`)
@@ -139,8 +156,8 @@ export async function ensureImage(
   if(pulled) return
 
   console.info(`  Pull failed. Building from Dockerfile…`)
-  if(!(await Bun.file(spec.dockerfilePath).exists())) {
-    console.error(`✗ No Dockerfile found at ${spec.dockerfilePath} and pull failed. Cannot start.`)
+  if(!(await dockerfilesAvailable(spec))) {
+    console.error(`✗ No Dockerfile found at ${spec.dockerfilePath} (or ${BASE_DOCKERFILE_PATH}) and pull failed. Cannot start.`)
     process.exit(1)
   }
 
