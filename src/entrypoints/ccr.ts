@@ -163,6 +163,15 @@ async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
   const apiKey = typeof config.APIKEY === "string" && config.APIKEY.length > 0 ? config.APIKEY : DEFAULT_APIKEY
   config.APIKEY = apiKey
 
+  // `ccr serve` otherwise takes over ~/.claude/settings.json for its Agent Profiles, writing an
+  // apiKeyHelper that fights the ANTHROPIC_AUTH_TOKEN we set — Claude Code warns "auth may not
+  // work as expected". We never launch profiles, so turn the whole mechanism off.
+  const profile = typeof config.profile === "object" && config.profile !== null
+    ? config.profile as Record<string, unknown>
+    : {}
+  profile.enabled = false
+  config.profile = profile
+
   const router = typeof config.Router === "object" && config.Router !== null
     ? config.Router as Record<string, unknown>
     : {}
@@ -314,6 +323,9 @@ try {
   claudeSettings = {}
 }
 claudeSettings.skipDangerousModePermissionPrompt = true
+// Defensive: if any CCR version still installs its profile apiKeyHelper, drop it — it and our
+// ANTHROPIC_AUTH_TOKEN are mutually exclusive as far as Claude Code is concerned.
+delete claudeSettings.apiKeyHelper
 await writeFile(CLAUDE_SETTINGS, JSON.stringify(claudeSettings, null, 2), { mode: 0o600 })
 
 // Apply host git identity so commits made inside the container are attributed correctly.

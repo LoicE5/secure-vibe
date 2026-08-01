@@ -71,6 +71,22 @@ function warnOnLegacyConfig(raw: string): void {
   }
 }
 
+/**
+ * Drops `_`-prefixed keys before the config is scanned for `$VAR` references, so prose in a
+ * `_comment` (the scaffolded starter documents `$VAR` forwarding) can't register as a variable.
+ */
+function stripCommentKeys(raw: string): string {
+  try {
+    const config: Record<string, unknown> = JSON.parse(raw)
+    for(const key of Object.keys(config)) {
+      if(key.startsWith("_")) delete config[key]
+    }
+    return JSON.stringify(config)
+  } catch {
+    return raw
+  }
+}
+
 /** Options the orchestrator passes to runCcrContainer. */
 export interface RunCcrContainerOptions {
   runtime: Runtime
@@ -115,7 +131,7 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
   // CCR's legacy-JSON import path alone. Persisting that store would silently break it.
   const configRaw = await readFile(CCR_CONFIG_PATH, "utf-8").catch(() => "")
   if(configRaw) warnOnLegacyConfig(configRaw)
-  const referenced = extractVarTokens(configRaw)
+  const referenced = extractVarTokens(stripCommentKeys(configRaw))
 
   const extraEnv: Record<string, string> = {}
   const missing: string[] = []

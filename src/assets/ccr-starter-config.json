@@ -1,5 +1,5 @@
 {
-  "_comment": "secure-vibe scaffolded this starter. Edit ~/.claude-code-router/config.json on the host and re-run. Only $VARs referenced here are forwarded into the container (resolved from your project .env first, then host env). Model selectors are 'ProviderName/model'. CCR 3.x ignores Router.default/background — secure-vibe reads them and maps them onto Claude Code's ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL, so /model still works at runtime. Free tiers are rate-limited and rough at tool-heavy agent work — point Router.default at a paid model for real work.",
+  "_comment": "secure-vibe scaffolded this starter. Edit ~/.claude-code-router/config.json on the host and re-run. Only the variables referenced by this config are forwarded into the container (resolved from your project .env first, then host env). Model selectors are 'ProviderName/model'. CCR 3.x ignores Router.default/background — secure-vibe reads them and maps them onto Claude Code's ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL, so /model still works at runtime. Free tiers are rate-limited and rough at tool-heavy agent work — point Router.default at a paid model for real work.",
   "HOST": "127.0.0.1",
   "PORT": 3456,
   "APIKEY": "secure-vibe",
