@@ -104,6 +104,10 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 
 Each provider has its own image, published to GHCR as `ghcr.io/loice5/secure-vibe/<provider>:latest` (`claude`, `antigravity`, `ccr`, `codex`, `vibe`). With no flags, secure-vibe uses the local image if present (checking the registry for updates at most once a day), pulls it if missing, and falls back to building locally from `docker/<provider>.dockerfile` if the pull fails. Use `--pull` to force-pull, or `--build` / `--build-no-cache` to force a local build.
 
+All five share a base image, `ghcr.io/loice5/secure-vibe/base:latest`, built from `docker/base/base.dockerfile`. It holds everything that isn't provider-specific: the hardened Ubuntu layer, the `viber` user, Homebrew + gcc, bun, the brew seed, and the sandbox prompt. Each provider Dockerfile is then just its own CLI install and wrappers on top of it. The weekly publish workflow builds and pushes the base in a job that gates the provider matrix, so the five images are always built against the base from the same run.
+
+Pulling a published provider image is unaffected: the images are self-contained once built, and the base is never fetched at runtime. Local builds don't need the registry either — `--build` builds the base under that same tag first, and Docker resolves `FROM` against local images before reaching for the registry, so the offline fallback above still works end to end.
+
 ## Environment Variables
 
 secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls back to its default: current directory, `save=no`, and `docker` when both runtimes are available.
@@ -280,8 +284,10 @@ Because Vibe does not support an append-system-prompt flag, secure-vibe injects 
 | `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
 | `bun run prune:image:codex` | Remove the built Docker image for the Codex provider |
 | `bun run prune:image:vibe` | Remove the built Docker image for the Vibe provider |
-| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` / `docker:build:codex` / `docker:build:vibe` | Build a provider image locally (append `:no-cache` to any of them to skip the layer cache) |
-| `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` / `docker:pull:codex` / `docker:pull:vibe` | Pull a provider image from GHCR |
+| `bun run prune:image:base` | Remove the locally built shared base image |
+| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` / `docker:build:codex` / `docker:build:vibe` | Build a provider image locally, rebuilding the shared base first (append `:no-cache` to any of them to skip the layer cache) |
+| `bun run docker:build:base` | Build only the shared base image |
+| `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` / `docker:pull:codex` / `docker:pull:vibe` / `docker:pull:base` | Pull an image from GHCR |
 
 ## Shell completion
 
