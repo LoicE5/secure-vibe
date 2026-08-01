@@ -19,4 +19,9 @@
 - No space between a keyword and its opening parenthesis
     - `for(`, `if(`, `while(`, `switch(` → good
     - `for (`, `if (`, `while (`, `switch (` → bad
-- Comment sparingly — aim for self-explanatory code (clear names, small functions) over narration. At most one short line for the non-obvious "why"; never multi-line comment blocks restating what the code already says. If the code makes a comment redundant, delete the comment. Exception : Functions should have a **small** jsdoc block before their declaration. Long comments are tolerated on top of standalone, complex files (said tolerated, not encouraged, it must be useful).
+- Comment sparingly. **Zero comments is the default** — clear names and small functions carry the meaning. Applies to every language, Dockerfiles and YAML included, not just TypeScript.
+    - A comment earns its place only for a non-obvious *why*, and then it is **one line, two at the absolute most**. If you need a third, the comment is a design smell: fix the code or cut the explanation.
+    - Never restate the line below. Never narrate a sequence of steps. Never write a paragraph explaining a mechanism, a trade-off, or what you tried — that belongs in the commit message, the changelog, or the PR, none of which are read by someone editing this line.
+    - Delete a comment the moment the code makes it redundant.
+    - Only exception: a function declaration always gets a jsdoc block, and it is **one line**. Multi-line jsdoc is reserved for a genuinely complex signature, never for prose about intent.
+    - Length is not proportional to how hard the reasoning was. A fact you spent an hour learning still gets one line.
