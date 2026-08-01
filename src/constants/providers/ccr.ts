@@ -7,6 +7,9 @@ export const CCR_CONFIG_DIR = join(homedir(), ".claude-code-router")
 /** CCR's config file. Parsed pre-spawn to discover which $VARs to forward (least privilege). */
 export const CCR_CONFIG_PATH = join(CCR_CONFIG_DIR, "config.json")
 
+/** CCR 3.x's store. Its presence without a config.json means CCR imported and deleted the JSON. */
+export const CCR_CONFIG_SQLITE_PATH = join(CCR_CONFIG_DIR, "config.sqlite")
+
 /** Container image for the CCR provider, published to GHCR (nested paths allowed, unlike Docker Hub). */
 export const CCR_IMAGE_NAME = "ghcr.io/loice5/secure-vibe/ccr:latest"
 

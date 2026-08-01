@@ -1,6 +1,6 @@
 import { access, readFile, mkdir, writeFile } from "fs/promises"
 import type { Runtime, GitIdentity } from "../../types"
-import { CCR_CONFIG_DIR, CCR_CONFIG_PATH } from "../../constants"
+import { CCR_CONFIG_DIR, CCR_CONFIG_PATH, CCR_CONFIG_SQLITE_PATH } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { loadDotEnv, extractVarTokens } from "../../utils/env-file"
@@ -33,6 +33,44 @@ async function ensureHostConfig(): Promise<boolean> {
   return true
 }
 
+/**
+ * Warns when a config still uses the CCR 2.x schema. The container translates it on the fly;
+ * this only tells the user what changed. The host file is never modified.
+ */
+function warnOnLegacyConfig(raw: string): void {
+  let config: Record<string, unknown>
+  try {
+    config = JSON.parse(raw)
+  } catch(parseError: unknown) {
+    console.warn("  ⚠ ~/.claude-code-router/config.json is not valid JSON — CCR will fall back to its defaults.", parseError)
+    return
+  }
+
+  const router = typeof config.Router === "object" && config.Router !== null
+    ? config.Router as Record<string, unknown>
+    : {}
+  // Already migrated: 3.x expresses routing as rules/fallback. Leave it alone.
+  if("rules" in router || "fallback" in router) return
+
+  const providers = Array.isArray(config.Providers) ? config.Providers : []
+  const droppedSlots = ["think", "longContext", "webSearch"].filter(slot => slot in router)
+  const usesCommaSelector = Object.values(router).some(value => typeof value === "string" && value.includes(","))
+  const usesTransformer = providers.some(provider => typeof provider === "object" && provider !== null && "transformer" in provider)
+  if(droppedSlots.length === 0 && !usesCommaSelector && !usesTransformer) return
+
+  console.warn("  ⚠ Your ~/.claude-code-router/config.json uses the CCR 2.x schema.")
+  console.warn("    CCR 3.x dropped Router.default/background/think/longContext/webSearch and switched")
+  console.warn("    model selectors from \"provider,model\" to \"Provider/model\".")
+  console.warn("    secure-vibe maps Router.default/background onto Claude Code's ANTHROPIC_MODEL /")
+  console.warn("    ANTHROPIC_DEFAULT_HAIKU_MODEL inside the container; your host file is never modified.")
+  if(droppedSlots.length > 0) {
+    console.warn(`    No 3.x equivalent, ignored: ${droppedSlots.join(", ")}.`)
+  }
+  if(usesTransformer) {
+    console.warn("    Providers[].transformer is vestigial in 3.x (protocol is sniffed instead).")
+  }
+}
+
 /** Options the orchestrator passes to runCcrContainer. */
 export interface RunCcrContainerOptions {
   runtime: Runtime
@@ -60,12 +98,23 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
 
   // Give the user a real, editable config on the host if they have none yet.
   if(await ensureHostConfig()) {
-    console.info(`  No CCR config found — wrote a starter to ${CCR_CONFIG_PATH}.`)
-    console.info("    It defaults to a free OpenRouter model — set OPENROUTER_API_KEY in your project .env, then re-run.")
+    const consumedByCcr = await access(CCR_CONFIG_SQLITE_PATH).then(() => true).catch(() => false)
+    if(consumedByCcr) {
+      console.warn(`  ⚠ No config.json found, but ${CCR_CONFIG_SQLITE_PATH} exists.`)
+      console.warn("    CCR 3.x running on this host imported your config into sqlite and deleted the JSON.")
+      console.warn("    secure-vibe reads config.json only, so a starter was scaffolded — copy your providers")
+      console.warn("    back into it (CCR's own UI can show the imported config).")
+    } else {
+      console.info(`  No CCR config found — wrote a starter to ${CCR_CONFIG_PATH}.`)
+      console.info("    It defaults to a free OpenRouter model — set OPENROUTER_API_KEY in your project .env, then re-run.")
+    }
   }
 
-  // Discover which env vars the active config references (empty if unreadable).
+  // Discover which env vars the active config references (empty if unreadable). This only works
+  // because the container always starts with no CCR sqlite store: interpolation happens on
+  // CCR's legacy-JSON import path alone. Persisting that store would silently break it.
   const configRaw = await readFile(CCR_CONFIG_PATH, "utf-8").catch(() => "")
+  if(configRaw) warnOnLegacyConfig(configRaw)
   const referenced = extractVarTokens(configRaw)
 
   const extraEnv: Record<string, string> = {}
