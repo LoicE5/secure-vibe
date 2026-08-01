@@ -110,9 +110,10 @@ FULL=0
 
 CFG="$HOME/.claude-code-router/config.json"
 IMAGE="ghcr.io/loice5/secure-vibe/ccr:latest"
-# --build so the suite tests the working tree. Without it the CLI is local-image-first with a
-# daily registry check, so a stale published image can be pulled and tested instead.
-# NOBUILD=1 skips it when you have just built by hand; --build-no-cache for a full rebuild.
+# The image is built up-front (below) so the checks inspect the working tree rather than
+# whatever is published: the CLI is local-image-first with a daily registry check, and a bare
+# `docker run` on a missing image silently pulls. NOBUILD=1 reuses the current image; NOCACHE=1
+# forces a no-cache rebuild.
 CLI="bun src/index.ts --ccr"
 BUILD_FLAG="--build"
 [ "${NOBUILD:-0}" = "1" ] && BUILD_FLAG=""
@@ -127,13 +128,8 @@ sha() {
 head_ "Host preflight"
 command -v docker >/dev/null && ok "docker on PATH" || { bad "docker not found"; exit 1; }
 docker info >/dev/null 2>&1 && ok "docker daemon reachable" || { bad "docker daemon not running"; exit 1; }
-if docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  ok "image present"
-elif [ -n "$BUILD_FLAG" ]; then
-  skip "image absent — $BUILD_FLAG will build it"
-else
-  bad "image missing and NOBUILD=1" "run: bun run docker:build:ccr"
-fi
+docker image inspect "$IMAGE" >/dev/null 2>&1 \
+  && ok "a local image exists" || skip "no local image yet (it will be built below)"
 [ -f "$CFG" ] && ok "host config exists" || { bad "no config at $CFG"; exit 1; }
 bun -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$CFG" 2>/dev/null \
   && ok "host config is valid JSON" || { bad "host config is not valid JSON"; exit 1; }
@@ -176,8 +172,24 @@ else
   skip "could not reach OpenRouter to validate model ids"
 fi
 
+head_ "Image build"
+if [ -n "$BUILD_FLAG" ]; then
+  script="docker:build:ccr"
+  [ "$BUILD_FLAG" = "--build-no-cache" ] && script="docker:build:ccr:no-cache"
+  if bun run "$script" >/tmp/ccr-build.log 2>&1; then
+    ok "image built ($script)"
+  else
+    bad "image build failed" "$(tail -6 /tmp/ccr-build.log)"; exit 1
+  fi
+else
+  skip "NOBUILD=1 — inspecting and testing the existing image"
+fi
+docker image inspect "$IMAGE" >/dev/null 2>&1 || { bad "no local image to test"; exit 1; }
+
+# --pull=never so a missing local image can never be silently replaced by the published one:
+# inspecting the registry image instead of the working tree is exactly the wrong answer here.
 head_ "Image contents"
-img=$(docker run --rm --entrypoint bash "$IMAGE" -c '
+img=$(docker run --rm --pull=never --entrypoint bash "$IMAGE" -c '
   ls -A ~/.claude-code-router 2>/dev/null | tr "\n" " "
   echo "|ABI=$(node -e "console.log(process.versions.modules)")"
   echo "|BINS=$(ls ~/bin | tr "\n" " ")"
@@ -195,7 +207,7 @@ head_ "Host config immutability"
 before=$(sha "$CFG")
 
 head_ "Container run"
-SECRET_UNUSED_DECOY=leaked-if-forwarded $CLI $BUILD_FLAG --command 'bash scripts/test-ccr.sh --in-container'
+SECRET_UNUSED_DECOY=leaked-if-forwarded $CLI --command 'bash scripts/test-ccr.sh --in-container'
 container_rc=$?
 
 after=$(sha "$CFG")
