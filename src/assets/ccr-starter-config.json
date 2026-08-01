@@ -1,25 +1,24 @@
 {
-  "_comment": "secure-vibe scaffolded this starter. Edit ~/.claude-code-router/config.json on the host and re-run. Only $VARs referenced here are forwarded into the container (resolved from your project .env first, then host env). Free tiers are rate-limited and rough at tool-heavy agent work — switch Router.default to a paid model for real work.",
+  "_comment": "secure-vibe scaffolded this starter. Edit ~/.claude-code-router/config.json on the host and re-run. Only the variables referenced by this config are forwarded into the container (resolved from your project .env first, then host env). Model selectors are 'ProviderName/model', so the auto-router below is 'openrouter/openrouter/free' — the first segment is the provider name, the rest is the model id. CCR 3.x ignores Router.default/background — secure-vibe reads them and maps them onto Claude Code's ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL, so /model still works at runtime. Default is the free auto-router because individual ':free' models get retired without notice; point Router.default at 'openrouter/qwen/qwen3-coder' (paid, needs credits) for real work.",
   "HOST": "127.0.0.1",
   "PORT": 3456,
   "APIKEY": "secure-vibe",
   "Providers": [
     {
       "name": "openrouter",
-      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_base_url": "https://openrouter.ai/api/v1",
       "api_key": "$OPENROUTER_API_KEY",
-      "models": ["qwen/qwen3-coder:free", "openrouter/free"],
-      "transformer": { "use": ["openrouter"] }
+      "models": ["openrouter/free", "qwen/qwen3-coder"]
     },
     {
       "name": "mlx",
-      "api_base_url": "http://host.docker.internal:8080/v1/chat/completions",
+      "api_base_url": "http://host.docker.internal:8080/v1",
       "api_key": "not-needed",
       "models": ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
     }
   ],
   "Router": {
-    "default": "openrouter,qwen/qwen3-coder:free",
-    "background": "openrouter,qwen/qwen3-coder:free"
+    "default": "openrouter/openrouter/free",
+    "background": "openrouter/openrouter/free"
   }
 }
