@@ -121,6 +121,22 @@ function toModelSelector(value: unknown): string | null {
   return `${value.slice(0, separator)}/${value.slice(separator + 1)}`
 }
 
+/** Every `Provider/model` selector the config actually serves. */
+function providerModelSelectors(config: Record<string, unknown>): string[] {
+  const providers = Array.isArray(config.Providers) ? config.Providers : []
+  const selectors: string[] = []
+  for(const entry of providers) {
+    if(typeof entry !== "object" || entry === null) continue
+    const provider = entry as Record<string, unknown>
+    if(typeof provider.name !== "string") continue
+    const models = Array.isArray(provider.models) ? provider.models : []
+    for(const model of models) {
+      if(typeof model === "string") selectors.push(`${provider.name}/${model}`)
+    }
+  }
+  return selectors
+}
+
 /**
  * Normalizes the mirrored config in place and returns what the rest of the entrypoint needs.
  * Must be called before `ccr serve`, which deletes config.json after importing it.
@@ -177,6 +193,18 @@ async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
     : {}
   const defaultModel = toModelSelector(router.default)
   const backgroundModel = toModelSelector(router.background) ?? defaultModel
+
+  // A Router slot naming a model no provider lists is only caught by CCR at request time, as an
+  // opaque 400 mid-session. Say so up front instead.
+  const available = providerModelSelectors(config)
+  const unserved = [...new Set([defaultModel, backgroundModel].filter(
+    (selector): selector is string => selector !== null && available.length > 0 && !available.includes(selector)
+  ))]
+  if(unserved.length > 0) {
+    console.warn(`  [entrypoint] ⚠ No provider serves: ${unserved.join(", ")} — requests using it will fail with a 400.`)
+    console.warn(`  [entrypoint]   Configured models: ${available.join(", ")}`)
+    console.warn("  [entrypoint]   Fix Router.default/background in the host config, or switch in-session with /model.")
+  }
 
   await writeFile(CCR_CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 })
 
