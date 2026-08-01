@@ -224,7 +224,10 @@ const gateway = Bun.spawn([CCR_BIN, "serve", "--no-open"], {
   stderr: gatewayLogFd
 })
 
-type GatewayOutcome = "ready" | "exited" | "timeout"
+type GatewayOutcome = "ready" | "exited" | "failed" | "timeout"
+
+/** CCR logs this and then never binds the gateway port, so waiting the full timeout is pointless. */
+const FATAL_LOG_MARKER = "No available models"
 
 /**
  * Polls the gateway's unauthenticated /health until it can actually route, the child dies, or
@@ -238,6 +241,8 @@ async function waitForGateway(port: number, timeoutMs: number): Promise<GatewayO
   const deadline = Date.now() + timeoutMs
   while(Date.now() < deadline) {
     if(gateway.exitCode !== null) return "exited"
+    const log = await readFile(CCR_LOG_PATH, "utf-8").catch(() => "")
+    if(log.includes(FATAL_LOG_MARKER)) return "failed"
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) })
       if(response.ok) {
@@ -256,16 +261,18 @@ const gatewayOutcome = await waitForGateway(ccrConfig.port, 30_000)
 if(gatewayOutcome === "ready") {
   const routed = ccrConfig.defaultModel ? ` (model: ${ccrConfig.defaultModel})` : ""
   console.info(`  [entrypoint] CCR gateway ready on 127.0.0.1:${ccrConfig.port}${routed}.`)
-} else if(gatewayOutcome === "timeout" && gateway.exitCode === null) {
-  console.warn(`  [entrypoint] ⚠ The CCR gateway is still starting after 30s — the first request may fail. See ${CCR_LOG_PATH}.`)
 } else {
   // Non-fatal on purpose, matching the brew-volume failure above: drop the user into the
   // shell so they can read the log and fix their config instead of losing the container.
+  // The log is classified first: CCR keeps its management server alive after refusing to bind
+  // the gateway, so this path is reached by timeout as often as by the child exiting.
   const log = await readFile(CCR_LOG_PATH, "utf-8").catch(() => "")
   console.warn("  [entrypoint] ⚠ The CCR gateway did not start — Claude Code will not be able to reach a model.")
-  if(log.includes("No available models")) {
+  if(log.includes(FATAL_LOG_MARKER)) {
     console.warn("  [entrypoint]   CCR 3.x refuses to start unless at least one provider lists at least one model.")
     console.warn("  [entrypoint]   Add a non-empty \"models\": [...] to a provider in ~/.claude-code-router/config.json on the host.")
+  } else if(gatewayOutcome === "timeout" && gateway.exitCode === null) {
+    console.warn(`  [entrypoint]   Still not answering after 30s. See ${CCR_LOG_PATH}.`)
   } else {
     if(gateway.exitCode !== null) console.warn(`  [entrypoint]   \`ccr serve\` exited with code ${gateway.exitCode}.`)
     else if(lastProbeError) console.warn("  [entrypoint]   Last health probe failed:", lastProbeError)

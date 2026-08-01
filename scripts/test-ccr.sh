@@ -216,7 +216,7 @@ if [ "$FULL" = "1" ]; then
   out=$($CLI --command 'echo SHELL_REACHED' 2>&1)
   case "$out" in
     *"No available models"*|*"at least one model"*) ok "empty models produces the targeted message" ;;
-    *) bad "expected a 'no available models' message" "$(printf '%s' "$out" | tail -c 300)" ;;
+    *) bad "expected a 'no available models' message" "$(printf '%s' "$out" | grep -v '^ =>' | tail -c 900)" ;;
   esac
   case "$out" in
     *SHELL_REACHED*) ok "shell still usable after gateway failure (non-fatal)" ;;
