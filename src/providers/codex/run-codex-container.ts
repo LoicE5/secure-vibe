@@ -12,18 +12,13 @@ export interface RunCodexContainerOptions {
   gitConfig: GitIdentity | null
 }
 
-/**
- * Runs the Codex container: resolves the host's Codex auth, mounts
- * ~/.codex read-only at /home/viber/.codex-host, injects CODEX_CREDENTIALS,
- * and delegates the actual spawn to the generic helper.
- */
+/** Runs the Codex container with the host's auth and ~/.codex mounted read-only. */
 export async function runCodexContainer(options: RunCodexContainerOptions): Promise<number> {
   const credentialsJson = await resolveCodexCredentials()
 
   const extraEnv: Record<string, string> = {}
   if(credentialsJson) {
-    // entrypoint.ts reads this and writes auth.json inside the container —
-    // nothing is ever written back to the host's ~/.codex.
+    // The entrypoint writes auth.json inside the container; the host's ~/.codex is untouched.
     extraEnv.CODEX_CREDENTIALS = credentialsJson
   }
 

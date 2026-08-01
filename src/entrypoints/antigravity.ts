@@ -1,43 +1,13 @@
-/**
- * Antigravity container entrypoint (PID 1).
- *
- * Runs every time the Antigravity provider container starts. Responsibilities:
- *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
- *   2. Mirror the read-only ~/.gemini-host mount into a writable copy, then write
- *      the host agy token ($AGY_OAUTH_TOKEN) to the file agy reads in a container.
- *   3. Whitelist the workspace by adding it to "trustedWorkspaces" in
- *      ~/.gemini/antigravity-cli/settings.json so agy skips its "Do you trust
- *      this folder?" dialog (--dangerously-skip-permissions only covers tool
- *      actions, not folder trust). Merged so host entries survive.
- *   4. Inject the sandbox prompt into ~/.gemini/GEMINI.md (agy has no
- *      --append-system-prompt flag; the global GEMINI.md is prepended to every
- *      prompt). Marker-guarded so it's idempotent and keeps any existing context.
- *   5. Apply host git identity from $GIT_USER_NAME / $GIT_USER_EMAIL.
- *   6. Ignore SIGINT at PID 1 so Ctrl+C kills only the foreground job (agy)
- *      without exiting the shell.
- *   7. Spawn either the explicit command (and set $SECURE_VIBE_EXPLICIT_CMD=1
- *      so the bashrc auto-start guard skips agy) or an interactive bash.
- *
- * The COPY directive in docker/antigravity.dockerfile maps this file to the
- * provider-agnostic in-container path /home/viber/entrypoint.ts.
- */
-
 import { mkdir, writeFile, readFile, access } from "fs/promises"
 import { $ } from "bun"
 
-// ── Seed linuxbrew volume on first run ────────────────────────────────────────
-// The named volume at /home/linuxbrew starts empty; copy from the seed baked
-// into the image. Subsequent runs skip this entirely.
 const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
 if(!brewReady) {
   console.info("  [entrypoint] First run: seeding brew volume from image (this may take a minute)…")
   await $`cp -a /opt/linuxbrew-seed/. /home/linuxbrew/`.nothrow()
   console.info("  [entrypoint] Brew volume ready.")
 } else {
-  // The brew volume persists and stores real numeric UID ownership. If it was
-  // seeded by an image with a different UID (e.g. an older build), brew can't
-  // write it and there's no root at runtime to repair it. Detect that early and
-  // tell the user exactly how to recover instead of letting brew fail cryptically.
+  // The volume stores numeric UID ownership and there is no root at runtime to repair it.
   const { exitCode } = await $`test -w /home/linuxbrew/.linuxbrew/Cellar`.nothrow().quiet()
   if(exitCode !== 0) {
     console.warn("  [entrypoint] ⚠ The brew volume is owned by a different UID — brew will fail to install packages.")
@@ -48,8 +18,7 @@ if(!brewReady) {
 const HOME_DIR = "/home/viber"
 const GEMINI_DIR = `${HOME_DIR}/.gemini`
 
-// Copy a read-only host mount into a writable copy (agy refreshes its own state).
-// dotglob so hidden files come along; the host stays untouched.
+/** Copies a read-only host mount into a writable copy; the host stays untouched. */
 async function mirror(hostDir: string, targetDir: string): Promise<void> {
   const hostExists = await access(hostDir).then(() => true).catch(() => false)
   if(!hostExists) return
@@ -63,8 +32,7 @@ async function mirror(hostDir: string, targetDir: string): Promise<void> {
 
 await mirror(`${HOME_DIR}/.gemini-host`, GEMINI_DIR)
 
-// Write the host's agy token to the file agy reads in container mode (it skips the
-// keyring when it detects /.dockerenv), so the session starts logged in.
+// agy skips the keyring when it detects /.dockerenv and reads this file instead.
 const agyToken = process.env.AGY_OAUTH_TOKEN
 if(agyToken) {
   const tokenDir = `${GEMINI_DIR}/antigravity-cli`
@@ -72,11 +40,8 @@ if(agyToken) {
   await writeFile(`${tokenDir}/antigravity-oauth-token`, agyToken, { mode: 0o600 })
 }
 
-// Whitelist the workspace so agy skips its "Do you trust this folder?" dialog
-// (the wrapper's --dangerously-skip-permissions only auto-approves tool actions,
-// not folder trust). agy stores trust as a plain array of absolute paths under
-// "trustedWorkspaces" in ~/.gemini/antigravity-cli/settings.json. Merge into any
-// mirrored host settings so the user's other trusted paths survive.
+// Folder trust is separate from tool approvals, so --dangerously-skip-permissions does not
+// cover it. Merged into any mirrored host settings so other trusted paths survive.
 const APP_DIR = "/home/viber/app"
 const agySettingsDir = `${GEMINI_DIR}/antigravity-cli`
 const agySettingsPath = `${agySettingsDir}/settings.json`
@@ -99,8 +64,7 @@ if(!trustedWorkspaces.includes(APP_DIR)) {
   await writeFile(agySettingsPath, JSON.stringify(agySettings, null, 2), { mode: 0o600 })
 }
 
-// agy has no --append-system-prompt flag, so the sandbox prompt goes into the
-// global ~/.gemini/GEMINI.md. Marker-guarded so it's idempotent and keeps existing context.
+// No --append-system-prompt flag, so the prompt goes into the global instructions file.
 const SANDBOX_PROMPT_FILE = `${HOME_DIR}/.secure-vibe-sandbox.md`
 const START_MARKER = "<!-- secure-vibe sandbox (start) -->"
 const END_MARKER = "<!-- secure-vibe sandbox (end) -->"
@@ -111,7 +75,6 @@ if(sandboxPrompt) {
   const geminiMdPath = `${GEMINI_DIR}/GEMINI.md`
   const existing = await readFile(geminiMdPath, "utf-8").catch(() => "")
 
-  // Strip any previous secure-vibe block, then append a fresh one.
   let base = existing
   const startIdx = base.indexOf(START_MARKER)
   if(startIdx !== -1) {
@@ -124,7 +87,6 @@ if(sandboxPrompt) {
   await writeFile(geminiMdPath, merged)
 }
 
-// Apply host git identity so commits made inside the container are attributed correctly.
 const gitUserName = process.env.GIT_USER_NAME
 const gitUserEmail = process.env.GIT_USER_EMAIL
 if(gitUserName) {
@@ -134,9 +96,7 @@ if(gitUserEmail) {
   await $`git config --global user.email ${gitUserEmail}`.quiet().nothrow()
 }
 
-// Ignore SIGINT at the bun (PID 1) level so ctrl+c inside the container
-// only reaches bash's job control, which kills the foreground job (agy)
-// without terminating the shell itself.
+// Ignored at PID 1 so ctrl+c reaches bash's job control and kills only the foreground job.
 process.on("SIGINT", () => {})
 
 const cmd = process.argv.slice(2)

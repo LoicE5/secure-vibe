@@ -9,10 +9,7 @@ export function parseExcludePatterns(raw: string): string[] {
   return raw.split(",").map(pattern => pattern.trim()).filter(pattern => pattern.length > 0)
 }
 
-/**
- * Resolves the union of files matching the given patterns under `workDir`.
- * Bare names (no wildcards, no path separator) that are directories are included as a unit.
- */
+/** Resolves the union of files matching `patterns` under `workDir`. */
 export async function resolveExcludedFiles(workDir: string, patterns: string[]): Promise<string[]> {
   const seen = new Set<string>()
   for(const pattern of patterns) {
@@ -20,9 +17,7 @@ export async function resolveExcludedFiles(workDir: string, patterns: string[]):
     for await(const relPath of glob.scan({ cwd: workDir, onlyFiles: true, dot: true })) {
       seen.add(relPath)
     }
-    // Bare names (no wildcards or path separators) may be directories — move them as a unit.
-    // Guard with access() so a missing pattern is a silent no-op (the glob.scan above already
-    // covered the file case); stat-level failures get a debug log.
+    // Bare names may be directories, which glob.scan above does not cover; move them as a unit.
     if(!pattern.includes("*") && !pattern.includes("/")) {
       const targetPath = join(workDir, pattern)
       const targetExists = await access(targetPath).then(() => true).catch(() => false)
@@ -45,11 +40,7 @@ export async function isGitIgnored(workDir: string, relPath: string): Promise<bo
   return exitCode === 0
 }
 
-/**
- * Moves each path in `relPaths` out of `workDir` into a sibling secrets directory,
- * flattening "/" → "__" so subdirectories don't collide. Writes a manifest.json that
- * moveSecretsBack uses to restore them. Returns the secrets-dir path.
- */
+/** Moves `relPaths` into a sibling secrets directory, with a manifest for moveSecretsBack. */
 export async function moveSecretsOut(workDir: string, relPaths: string[]): Promise<string> {
   const secretsDir = join(dirname(workDir), `${basename(workDir)}-${timestamp()}-secrets`)
   await mkdir(secretsDir, { recursive: true })
@@ -71,10 +62,7 @@ export async function moveSecretsOut(workDir: string, relPaths: string[]): Promi
   return secretsDir
 }
 
-/**
- * Restores files previously displaced by moveSecretsOut, using the manifest written there.
- * Leaves the secrets directory in place for the user to delete manually once verified.
- */
+/** Restores files displaced by moveSecretsOut; the secrets directory is left for the user. */
 export async function moveSecretsBack(workDir: string, secretsDir: string): Promise<void> {
   let manifest: SecretEntry[]
   try {

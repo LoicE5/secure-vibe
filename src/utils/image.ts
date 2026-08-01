@@ -4,9 +4,7 @@ import { $ } from "bun"
 import { PROJECT_DIR } from "../constants"
 import type { Runtime, ProviderSpec } from "../types"
 
-/**
- * Builds `spec.imageName` from `spec.dockerfilePath`.
- */
+/** Builds `spec.imageName` from `spec.dockerfilePath`. */
 async function buildImage(runtime: Runtime, spec: ProviderSpec, noCache: boolean): Promise<void> {
   const buildArgs = [
     runtime, "build",
@@ -43,11 +41,7 @@ async function getLocalDigest(runtime: Runtime, image: string): Promise<string |
   return digest.startsWith("sha256:") ? digest : null
 }
 
-/**
- * Remote index digest (sha256:…) of `image` without pulling layers.
- * Uses `docker buildx imagetools inspect`; returns null on any failure or on
- * runtimes without buildx (e.g. podman), so callers fall back to a plain pull.
- */
+/** Remote index digest of `image` without pulling layers, or null on runtimes without buildx. */
 async function getRemoteDigest(runtime: Runtime, image: string): Promise<string | null> {
   if(runtime !== "docker") return null
   const { stdout, exitCode } = await $`${runtime} buildx imagetools inspect ${image} --format ${"{{.Manifest.Digest}}"}`.quiet().nothrow()
@@ -56,10 +50,7 @@ async function getRemoteDigest(runtime: Runtime, image: string): Promise<string 
   return digest.startsWith("sha256:") ? digest : null
 }
 
-/**
- * Once a day, attempts a pull and reports whether the image actually changed.
- * Cache file lives at `spec.imageCheckCachePath`. Best-effort — failures are warnings.
- */
+/** Once a day, pulls and reports whether the image changed. Best-effort. */
 async function checkForUpdates(runtime: Runtime, spec: ProviderSpec): Promise<void> {
   const today = new Date().toISOString().slice(0, 10)
   const cacheFile = Bun.file(spec.imageCheckCachePath)
@@ -106,11 +97,7 @@ async function checkForUpdates(runtime: Runtime, spec: ProviderSpec): Promise<vo
   await Bun.write(spec.imageCheckCachePath, today)
 }
 
-/**
- * Ensures `spec.imageName` is available locally. Honors --build / --build-no-cache / --pull.
- * Without flags: inspects locally; if found, daily-checks for updates; if missing, pulls;
- * if pull fails, falls back to a Dockerfile build.
- */
+/** Ensures `spec.imageName` is available locally, building from the Dockerfile if a pull fails. */
 export async function ensureImage(
   runtime: Runtime,
   spec: ProviderSpec,

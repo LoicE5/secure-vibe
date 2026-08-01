@@ -5,26 +5,10 @@ import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { loadDotEnv, extractVarTokens } from "../../utils/env-file"
 import { CCR_PROVIDER_SPEC } from "./spec"
-// Single source of truth for the starter config (shared with the container entrypoint, which
-// reads the same file copied into the image). Bun inlines this JSON at build time, so the
-// bundled CLI has no runtime dependency on the asset path.
+// Bun inlines this at build time, so the bundled CLI has no runtime dependency on the asset.
 import STARTER_CONFIG from "../../assets/ccr-starter-config.json"
 
-/**
- * Minimal starter config written to the HOST when none exists, so the user has a real,
- * persistent, editable file (the container mount is read-only). APIKEY is a dummy that CCR
- * forwards to Claude Code as its auth token so it skips the onboarding wizard. Defaults to a
- * free, tool-calling OpenRouter model (runs with just $OPENROUTER_API_KEY in the project .env,
- * no --local); a local MLX provider is included to switch to if you run one (needs --local).
- * The literal lives in src/assets/ccr-starter-config.json — edit it there.
- */
-
-/**
- * Ensures a CCR config exists ON THE HOST. If ~/.claude-code-router/config.json is
- * absent, writes the starter there (never overwrites an existing file) so it persists
- * and the user can edit it — then it gets mounted read-only and mirrored into the
- * container like any real config. Returns true if it scaffolded.
- */
+/** Writes the starter config to the host when none exists, so it persists and is editable. */
 async function ensureHostConfig(): Promise<boolean> {
   const exists = await access(CCR_CONFIG_PATH).then(() => true).catch(() => false)
   if(exists) return false
@@ -33,10 +17,7 @@ async function ensureHostConfig(): Promise<boolean> {
   return true
 }
 
-/**
- * Warns when a config still uses the CCR 2.x schema. The container translates it on the fly;
- * this only tells the user what changed. The host file is never modified.
- */
+/** Warns when a config still uses the CCR 2.x schema; the host file is never modified. */
 function warnOnLegacyConfig(raw: string): void {
   let config: Record<string, unknown>
   try {
@@ -71,10 +52,7 @@ function warnOnLegacyConfig(raw: string): void {
   }
 }
 
-/**
- * Drops `_`-prefixed keys before the config is scanned for `$VAR` references, so prose in a
- * `_comment` (the scaffolded starter documents `$VAR` forwarding) can't register as a variable.
- */
+/** Drops `_`-prefixed keys so prose in a `_comment` can't register as a `$VAR` reference. */
 function stripCommentKeys(raw: string): string {
   try {
     const config: Record<string, unknown> = JSON.parse(raw)
@@ -97,22 +75,10 @@ export interface RunCcrContainerOptions {
   local?: boolean
 }
 
-/**
- * Runs the CCR (claude-code-router) container.
- *
- * Env forwarding is strict least-privilege: we parse the host's config.json for
- * `$VAR`/`${VAR}` tokens and forward ONLY those, each resolved from the project .env
- * first then the host env (.env wins). Nothing referenced → nothing forwarded; .env is
- * never blanket-forwarded. When no host config exists we scaffold a starter ON THE HOST
- * (so it persists and is editable), then mount the dir read-only; the entrypoint mirrors
- * it into a writable copy. With `local`, a single --add-host flag lets the container reach
- * host-machine models (e.g. Ollama) — no published ports, no host-network mode. CCR's
- * local server stays on 127.0.0.1.
- */
+/** Runs the CCR container, forwarding only the env vars its config references (.env wins). */
 export async function runCcrContainer(options: RunCcrContainerOptions): Promise<number> {
   const dotEnv = await loadDotEnv(process.cwd())
 
-  // Give the user a real, editable config on the host if they have none yet.
   if(await ensureHostConfig()) {
     const consumedByCcr = await access(CCR_CONFIG_SQLITE_PATH).then(() => true).catch(() => false)
     if(consumedByCcr) {
@@ -126,9 +92,7 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
     }
   }
 
-  // Discover which env vars the active config references (empty if unreadable). This only works
-  // because the container always starts with no CCR sqlite store: interpolation happens on
-  // CCR's legacy-JSON import path alone. Persisting that store would silently break it.
+  // Interpolation happens on CCR's legacy-JSON import path alone, hence the sqlite-free start.
   const configRaw = await readFile(CCR_CONFIG_PATH, "utf-8").catch(() => "")
   if(configRaw) warnOnLegacyConfig(configRaw)
   const referenced = extractVarTokens(stripCommentKeys(configRaw))
@@ -151,18 +115,12 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
     console.warn(`  ⚠ Unresolved CCR config var(s): ${missing.join(", ")}. CCR will substitute empty values — set them in .env or your shell.`)
   }
 
-  // Note: we do NOT inject Anthropic credentials. CCR talks to its providers using the
-  // keys in its own config; Claude Code only needs CCR's local endpoint + dummy token.
-  // A real Claude.ai subscription token here could make Claude bypass CCR entirely.
-
   const extraArgs: string[] = []
   if(options.local) {
     extraArgs.push("--add-host=host.docker.internal:host-gateway")
     console.info("  --local: adding host-gateway DNS entry (reach host models via http://host.docker.internal:<port>).")
   }
 
-  // Mount the host config dir read-only (always present — ensureHostConfig created it
-  // if absent). The entrypoint mirrors it into a writable copy inside the container.
   const extraMounts: ExtraMount[] = []
   const configDirExists = await access(CCR_CONFIG_DIR).then(() => true).catch(() => false)
   if(configDirExists) extraMounts.push([CCR_CONFIG_DIR, "/home/viber/.claude-code-router-host", "ro"])

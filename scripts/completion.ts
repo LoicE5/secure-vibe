@@ -2,18 +2,6 @@ import { existsSync, readFileSync, writeFileSync } from "fs"
 import { join } from "path"
 import { DIRS_DIRECTIVE } from "../src/utils/completion"
 
-/**
- * Installs a dynamic shell-completion stub for the `secure-vibe` command.
- *
- * The stub holds NO flag knowledge — on each TAB it calls the live binary
- * (`bun .../src/index.ts __complete …`), which computes suggestions from the
- * FLAGS spec (src/constants/flags.ts). So completion never goes stale: upgrading
- * secure-vibe updates completion automatically, with no need to re-run setup.
- *
- * The block is written into the same aliases file the alias uses (~/.bash_aliases
- * or ~/.zsh_aliases) and is marker-guarded + idempotent — re-running replaces it.
- */
-
 const PROJECT_DIR = join(import.meta.dir, "..")
 const ENTRYPOINT = `${PROJECT_DIR}/src/index.ts`
 const START = "# secure-vibe completion (start)"
@@ -25,7 +13,6 @@ function bashBlock(): string {
     "_secure_vibe_complete() {",
     '  local cur="${COMP_WORDS[COMP_CWORD]}" out',
     `  out="$(bun "${ENTRYPOINT}" __complete "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null)"`,
-    // Strip the directory directive from the candidate list, then offer dirs too when it was present.
     `  COMPREPLY=( $(compgen -W "\${out//${DIRS_DIRECTIVE}/}" -- "$cur") )`,
     `  [[ "$out" == *${DIRS_DIRECTIVE}* ]] && COMPREPLY+=( $(compgen -d -- "$cur") )`,
     "}",
@@ -37,13 +24,10 @@ function bashBlock(): string {
 function zshBlock(): string {
   return [
     START,
-    // Ensure the completion system is initialised even if .zshrc hasn't run compinit yet.
     "(( $+functions[compdef] )) || { autoload -Uz compinit && compinit -u 2>/dev/null }",
     "_secure_vibe_complete() {",
     "  local -a out",
     `  out=( "\${(@f)$(bun "${ENTRYPOINT}" __complete "\${(@)words[2,CURRENT]}" 2>/dev/null)}" )`,
-    // When the directory directive is present, drop it from the list, add the flags/values
-    // (if any), then offer directories too. Otherwise just add whatever came back.
     `  if (( \${out[(I)${DIRS_DIRECTIVE}]} )); then`,
     `    out=( \${out:#${DIRS_DIRECTIVE}} )`,
     "    (( ${#out} )) && compadd -- $out",

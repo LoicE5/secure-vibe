@@ -1,11 +1,7 @@
 import type { ProviderId } from "../types"
 import { VALID_SAVE_MODES, VALID_RUNTIMES } from "./runtime"
 
-/**
- * Single source of truth for the CLI flag surface. Consumed by BOTH the argument
- * parser (src/utils/args.ts) and the dynamic completion handler (src/utils/completion.ts),
- * so adding a flag here updates parsing AND tab-completion at once — no drift.
- */
+/** Single source of truth for the CLI flag surface: drives both parsing and tab-completion. */
 
 /** A boolean flag carries no value; its presence sets the corresponding ParsedArgs field. */
 export interface BooleanFlag {
@@ -50,10 +46,7 @@ export const PROVIDER_FLAGS: Record<string, ProviderId> = {
   "--miaou": "vibe"
 }
 
-/**
- * Provider flags surfaced by tab-completion. Only "claude", "antigravity", "ccr", "codex", and
- * "vibe" have runners today (the rest are reserved), so we don't offer users non-working options.
- */
+/** Provider flags surfaced by tab-completion — only those with a runner today. */
 export const COMPLETABLE_PROVIDER_FLAGS: readonly string[] = [
   "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router", "--codex", "--gpt",
   "--vibe", "--lechat", "--mistral", "--miaou"

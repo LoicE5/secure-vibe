@@ -10,16 +10,8 @@ const START = "# secure-vibe alias (start)"
 const END = "# secure-vibe alias (end)"
 const LEGACY_MARKER = "# secure-vibe alias"
 
-// A shell FUNCTION, not an alias: zsh expands aliases before attempting completion,
-// which bypasses the `compdef secure-vibe` registration and breaks tab-completion.
-// A function isn't expanded that way, behaves identically for the user, and works
-// in both bash and zsh.
-//
-// The leading `unalias` drops any stale alias of the same name first (e.g. one left
-// active in the current shell from a previous setup). Without it, zsh/bash expand the
-// alias while parsing the function line below and abort with
-// "defining function based on alias". It runs on its own line so the removal takes
-// effect before the next line is parsed.
+// A function, not an alias: zsh expands aliases before completion, which bypasses `compdef`.
+// The `unalias` line clears a stale alias first, or defining the function below aborts.
 const FUNCTION_DEF = [
   `unalias ${NAME} 2>/dev/null || true`,
   `${NAME}() { bun "${ENTRYPOINT}" "$@"; }`
@@ -37,8 +29,7 @@ function stripBlock(content: string): string {
     if(end !== -1) content = content.slice(0, start) + content.slice(end + END.length)
   }
 
-  // Drop a legacy "# secure-vibe alias\nalias secure-vibe=…" block — left in place,
-  // the alias would shadow the new function in zsh and re-break completion.
+  // A legacy alias block left in place would shadow the function and re-break completion.
   const lines = content.split("\n")
   const keptLines: string[] = []
   for(let index = 0; index < lines.length; index++) {
@@ -73,5 +64,4 @@ if(shell.endsWith("zsh")) {
   addAlias(join(home, ".zsh_aliases"), join(home, ".zshrc"))
 }
 
-// Also install dynamic shell completion so `setup:alias` wires up both in one step.
 installCompletion()

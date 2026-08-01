@@ -10,19 +10,14 @@ import { ensureImage } from "./utils/image"
 import { resolveProviderRunner, resolveProviderSpec } from "./providers"
 import { CLEAN_EXIT_CODES } from "./constants"
 
-// ── Dynamic shell completion ────────────────────────────────────────────────
-// The installed shell stub calls `secure-vibe __complete <words…>` on each TAB.
-// Handle it before anything else (no image build, no prompts) and exit.
+// The installed shell stub calls this on each TAB; handle it before anything else.
 if(process.argv.at(2) === "__complete") {
   runCompletion(process.argv.slice(3))
   process.exit(0)
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
 const args = parseArgs()
 
-// Resolve config: CLI > ENV (null if unset or set to "prompt")
 const dirValue     = args.directory    ?? getEnvConfig("DIRECTORY")
 const saveValue    = args.save         ?? getEnvConfig("SAVE")
 const rtValue      = args.runtime      ?? getEnvConfig("RUNTIME")
@@ -34,16 +29,13 @@ const pullFlag     = args.pull         || getBoolEnv("PULL")
 const localFlag    = args.local        || getBoolEnv("LOCAL")
 const providerId   = args.provider     ?? "claude"
 
-// --local only affects ccr (it adds a host-gateway DNS entry). Warn so a misplaced
-// flag on claude/agy doesn't silently look like it did something.
 if(localFlag && providerId !== "ccr") {
   console.warn(`  ⚠ --local has no effect with the '${providerId}' provider (ccr only); ignoring.`)
 }
 
 console.info("── secure-vibe ──────────────────────────────────────────")
 
-// Resolved early — fails fast with a clear message before we touch the filesystem
-// or a container runtime if the user named an unimplemented provider.
+// Resolved early so an unimplemented provider fails before we touch the filesystem.
 const runProvider = resolveProviderRunner(providerId)
 
 const workDir = await selectDirectory(dirValue)
@@ -59,8 +51,7 @@ if(saveMode !== "no") await saveDirectory(workDir, saveMode)
 const providerSpec = resolveProviderSpec(providerId)
 await ensureImage(runtime, providerSpec, buildFlag, buildNCFlag, pullFlag)
 
-// Resolve files to exclude — done after ensureImage so pre-flight failures
-// (which call process.exit internally) never leave files displaced.
+// After ensureImage, so a pre-flight process.exit never leaves files displaced.
 const excludedFiles = excludeValue
   ? await resolveExcludedFiles(workDir, parseExcludePatterns(excludeValue))
   : []

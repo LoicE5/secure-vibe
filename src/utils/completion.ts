@@ -1,11 +1,7 @@
 import type { ValueFlag } from "../constants"
 import { FLAGS, COMPLETABLE_PROVIDER_FLAGS } from "../constants"
 
-/**
- * Sentinel emitted to tell the shell stub to *also* offer directory completion
- * (the directory positional). Kept here so the stub generator (scripts/completion.ts)
- * imports the exact same token — no drift between the two sides.
- */
+/** Sentinel telling the shell stub to also offer directory completion. */
 export const DIRS_DIRECTIVE = "__SV_DIRS__"
 
 /** Resolves a flag name to its ValueFlag spec, or undefined if it isn't a value-taking flag. */
@@ -14,27 +10,15 @@ function findValueFlag(name: string | undefined): ValueFlag | undefined {
   return FLAGS.find((flag): flag is ValueFlag => flag.kind === "value" && flag.name === name)
 }
 
-/**
- * Given the words typed so far, decides whether the cursor is positioned to complete
- * a value-flag's value. Handles the `--flag value` (space) form and the `--flag=value`
- * form, which bash splits on "=" into separate words by default.
- */
+/** Decides whether the cursor sits on a value-flag's value, in either `--flag=v` or `--flag v` form. */
 function activeValueFlag(words: string[]): ValueFlag | undefined {
   const count = words.length
-  // `--flag = <value?>` — bash split the "=" into its own word.
   if(words.at(count - 2) === "=") return findValueFlag(words.at(count - 3))
   if(words.at(count - 1) === "=") return findValueFlag(words.at(count - 2))
-  // `--flag <value>` — space form; the flag is the previous word.
   return findValueFlag(words.at(count - 2))
 }
 
-/**
- * Dynamic-completion handler invoked by the installed shell stub on every TAB
- * (`secure-vibe __complete <words…>`). Prints candidate suggestions one per line;
- * the shell stub filters them by the current partial word. All suggestions come
- * straight from the live FLAGS spec (src/constants/flags.ts), so completion never
- * goes stale as flags evolve — upgrading the tool updates completion automatically.
- */
+/** Handles `secure-vibe __complete <words…>`, printing FLAGS-derived candidates one per line. */
 export function runCompletion(words: string[]): void {
   const current = words.at(-1) ?? ""
 

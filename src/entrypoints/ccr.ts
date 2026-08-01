@@ -1,55 +1,14 @@
-/**
- * CCR (claude-code-router) container entrypoint (PID 1).
- *
- * Runs every time the CCR provider container starts. Responsibilities:
- *   1. Seed the named brew volume from /opt/linuxbrew-seed on first run.
- *   2. Mirror the read-only ~/.claude-code-router-host mount into a writable
- *      ~/.claude-code-router, skipping CCR's own sqlite state (see below).
- *   3. Normalize that config: pin HOST to loopback, inject a dummy APIKEY when none is
- *      set, and read Router.default/background — which CCR 3.x ignores — to derive the
- *      ANTHROPIC_* model env Claude Code actually honours.
- *   4. Start `ccr serve` as a sidecar gateway and wait for it to answer /health.
- *   5. Pre-accept Claude Code's first-run flags (onboarding, trust, bypass) in
- *      ~/.claude.json so it launches straight into a session with no wizard — done
- *      unconditionally since CCR users usually have no Anthropic account. No OAuth is
- *      injected (it could make Claude bypass CCR and hit Anthropic directly).
- *   6. Apply host git identity from $GIT_USER_NAME / $GIT_USER_EMAIL.
- *   7. Ignore SIGINT at PID 1 so Ctrl+C kills only the foreground job without exiting the
- *      shell; tear the gateway down on SIGTERM and on normal exit.
- *   8. Spawn either the explicit command (and set $SECURE_VIBE_EXPLICIT_CMD=1 so the
- *      bashrc auto-start guard skips ccr) or an interactive bash.
- *
- * CCR 3.x dropped `ccr code`, so CCR no longer launches Claude Code — it is a plain
- * Anthropic-compatible gateway on 127.0.0.1 and the /home/viber/bin/claude wrapper points
- * at it. That wrapper is the single source for the bypass flag and the sandbox prompt.
- *
- * CRITICAL INVARIANT: CCR imports config.json ONLY when its sqlite store has no config row,
- * then deletes the JSON. Three things depend on the container starting with no sqlite —
- * the mounted config being read at all, `$VAR` interpolation (legacy-import path only, which
- * is what makes the runner's least-privilege env forwarding work), and host edits taking
- * effect on the next run. Hence the mirror exclusions and the purge below.
- *
- * The COPY directive in docker/ccr.dockerfile maps this file to the provider-agnostic
- * in-container path /home/viber/entrypoint.ts.
- */
-
 import { mkdir, writeFile, readFile, access } from "fs/promises"
 import { openSync } from "fs"
 import { $ } from "bun"
 
-// ── Seed linuxbrew volume on first run ────────────────────────────────────────
-// The named volume at /home/linuxbrew starts empty; copy from the seed baked
-// into the image. Subsequent runs skip this entirely.
 const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
 if(!brewReady) {
   console.info("  [entrypoint] First run: seeding brew volume from image (this may take a minute)…")
   await $`cp -a /opt/linuxbrew-seed/. /home/linuxbrew/`.nothrow()
   console.info("  [entrypoint] Brew volume ready.")
 } else {
-  // The brew volume persists and stores real numeric UID ownership. If it was
-  // seeded by an image with a different UID (e.g. an older build), brew can't
-  // write it and there's no root at runtime to repair it. Detect that early and
-  // tell the user exactly how to recover instead of letting brew fail cryptically.
+  // The volume stores numeric UID ownership and there is no root at runtime to repair it.
   const { exitCode } = await $`test -w /home/linuxbrew/.linuxbrew/Cellar`.nothrow().quiet()
   if(exitCode !== 0) {
     console.warn("  [entrypoint] ⚠ The brew volume is owned by a different UID — brew will fail to install packages.")
@@ -61,8 +20,6 @@ const HOME_DIR = "/home/viber"
 const CCR_DIR = `${HOME_DIR}/.claude-code-router`
 const CCR_HOST_DIR = `${HOME_DIR}/.claude-code-router-host`
 const CCR_CONFIG_PATH = `${CCR_DIR}/config.json`
-// Image-baked starter (src/assets/ccr-starter-config.json, COPYed in by the Dockerfile). Same
-// single source the host runner imports, so the host and fallback scaffolds never drift.
 const CCR_STARTER_CONFIG_PATH = `${HOME_DIR}/.ccr-starter-config.json`
 const CCR_ENV_PATH = `${HOME_DIR}/.secure-vibe-ccr.env`
 const CCR_LOG_PATH = `${HOME_DIR}/.ccr-serve.log`
@@ -70,9 +27,7 @@ const CCR_BIN = `${HOME_DIR}/bin/ccr-default`
 const DEFAULT_PORT = 3456
 const DEFAULT_APIKEY = "secure-vibe"
 
-// CCR's own state, never mirrored from the host: sqlite would suppress the config.json
-// import (see CRITICAL INVARIANT above) and service.json describes a service that isn't
-// running in this container.
+// CCR's own state, never mirrored: it would suppress the config.json import (see below).
 const CCR_STATE_ENTRIES = [
   "config.sqlite",
   "config.sqlite-wal",
@@ -98,8 +53,8 @@ async function mirror(hostDir: string, targetDir: string): Promise<void> {
 await mkdir(CCR_DIR, { recursive: true })
 await mirror(CCR_HOST_DIR, CCR_DIR)
 
-// Belt and braces: guarantee the JSON import path runs even if the mirror leaked state or a
-// previous layer left something behind. Cheap, and the whole design rests on it.
+// CCR imports config.json only when its sqlite store is empty, so the mounted config, `$VAR`
+// interpolation and host edits all depend on the container starting without one.
 await $`rm -rf ${CCR_DIR}/config.sqlite ${CCR_DIR}/config.sqlite-wal ${CCR_DIR}/config.sqlite-shm ${CCR_DIR}/app-data`.nothrow().quiet()
 
 /** What the container needs from the CCR config once CCR has consumed (and deleted) it. */
@@ -110,10 +65,7 @@ interface CcrConfigSummary {
   backgroundModel: string | null
 }
 
-/**
- * Converts a v2 `provider,model` selector to the 3.x `Provider/model` form, leaving
- * already-migrated values untouched.
- */
+/** Converts a v2 `provider,model` selector to the 3.x `Provider/model` form. */
 function toModelSelector(value: unknown): string | null {
   if(typeof value !== "string" || value.length === 0) return null
   const separator = value.indexOf(",")
@@ -137,10 +89,7 @@ function providerModelSelectors(config: Record<string, unknown>): string[] {
   return selectors
 }
 
-/**
- * Normalizes the mirrored config in place and returns what the rest of the entrypoint needs.
- * Must be called before `ccr serve`, which deletes config.json after importing it.
- */
+/** Normalizes the mirrored config in place; must run before `ccr serve` deletes it. */
 async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
   const fallback: CcrConfigSummary = { port: DEFAULT_PORT, apiKey: DEFAULT_APIKEY, defaultModel: null, backgroundModel: null }
 
@@ -148,9 +97,7 @@ async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
   try {
     raw = await readFile(CCR_CONFIG_PATH, "utf-8")
   } catch(readError: unknown) {
-    // No config mounted — scaffold the image-baked starter into an EPHEMERAL in-container
-    // copy (lost on exit). The host runner normally scaffolds a persistent config before
-    // spawn, so reaching here is the fallback path.
+    // Fallback path: the host runner normally scaffolds a persistent config before spawn.
     try {
       raw = await readFile(CCR_STARTER_CONFIG_PATH, "utf-8")
       await writeFile(CCR_CONFIG_PATH, raw, { mode: 0o600 })
@@ -171,17 +118,12 @@ async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
     return fallback
   }
 
-  // Pin HOST to loopback unconditionally. The container publishes no ports so this can't be
-  // reached from the host regardless, but it keeps the "never bind wide" guarantee.
   config.HOST = "127.0.0.1"
-  // CCR 3.x rejects every gateway request without a key, and Claude Code needs a non-empty
-  // token to consider itself authenticated. Only inject when absent, so a real key is kept.
+  // CCR rejects keyless requests and Claude Code needs a token, so inject one when absent.
   const apiKey = typeof config.APIKEY === "string" && config.APIKEY.length > 0 ? config.APIKEY : DEFAULT_APIKEY
   config.APIKEY = apiKey
 
-  // `ccr serve` otherwise takes over ~/.claude/settings.json for its Agent Profiles, writing an
-  // apiKeyHelper that fights the ANTHROPIC_AUTH_TOKEN we set — Claude Code warns "auth may not
-  // work as expected". We never launch profiles, so turn the whole mechanism off.
+  // Otherwise `ccr serve` writes an apiKeyHelper that fights our ANTHROPIC_AUTH_TOKEN.
   const profile = typeof config.profile === "object" && config.profile !== null
     ? config.profile as Record<string, unknown>
     : {}
@@ -194,8 +136,7 @@ async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
   const defaultModel = toModelSelector(router.default)
   const backgroundModel = toModelSelector(router.background) ?? defaultModel
 
-  // A Router slot naming a model no provider lists is only caught by CCR at request time, as an
-  // opaque 400 mid-session. Say so up front instead.
+  // CCR only catches an unserved Router slot at request time, as an opaque 400 mid-session.
   const available = providerModelSelectors(config)
   const unserved = [...new Set([defaultModel, backgroundModel].filter(
     (selector): selector is string => selector !== null && available.length > 0 && !available.includes(selector)
@@ -214,9 +155,7 @@ async function normalizeCcrConfig(): Promise<CcrConfigSummary> {
 
 const ccrConfig = await normalizeCcrConfig()
 
-// ── Gateway sidecar ───────────────────────────────────────────────────────────
-// Output goes to a log file, never to the TTY: `ccr serve` prints a management-server
-// banner (and per-request lines) that would corrupt Claude Code's TUI rendering.
+// Logged to a file, never the TTY: `ccr serve`'s output would corrupt Claude Code's TUI.
 const gatewayLogFd = openSync(CCR_LOG_PATH, "a")
 const gateway = Bun.spawn([CCR_BIN, "serve", "--no-open"], {
   stdin: "ignore",
@@ -229,13 +168,7 @@ type GatewayOutcome = "ready" | "exited" | "failed" | "timeout"
 /** CCR logs this and then never binds the gateway port, so waiting the full timeout is pointless. */
 const FATAL_LOG_MARKER = "No available models"
 
-/**
- * Polls the gateway's unauthenticated /health until it can actually route, the child dies, or
- * we time out. Probe failures are expected while it boots, so the last one is only reported if
- * we give up. Note /health answers 200 with {"status":"starting"} well before the core gateway
- * is up, so status is checked too — matching on "not starting" rather than a specific ready
- * value keeps this from hanging if CCR renames that state.
- */
+/** Polls /health, which answers 200 while still "starting", until the gateway can route. */
 let lastProbeError: unknown = null
 async function waitForGateway(port: number, timeoutMs: number): Promise<GatewayOutcome> {
   const deadline = Date.now() + timeoutMs
@@ -262,10 +195,8 @@ if(gatewayOutcome === "ready") {
   const routed = ccrConfig.defaultModel ? ` (model: ${ccrConfig.defaultModel})` : ""
   console.info(`  [entrypoint] CCR gateway ready on 127.0.0.1:${ccrConfig.port}${routed}.`)
 } else {
-  // Non-fatal on purpose, matching the brew-volume failure above: drop the user into the
-  // shell so they can read the log and fix their config instead of losing the container.
   // The log is classified first: CCR keeps its management server alive after refusing to bind
-  // the gateway, so this path is reached by timeout as often as by the child exiting.
+  // the gateway, so this is reached by timeout as often as by the child exiting.
   const log = await readFile(CCR_LOG_PATH, "utf-8").catch(() => "")
   console.warn("  [entrypoint] ⚠ The CCR gateway did not start — Claude Code will not be able to reach a model.")
   if(log.includes(FATAL_LOG_MARKER)) {
@@ -281,17 +212,13 @@ if(gatewayOutcome === "ready") {
   }
 }
 
-// Endpoint + token for every shell in this container. The wrappers and .bashrc source this
-// file, so `docker exec -it <container> claude` works even though it inherits nothing.
+// Sourced by the wrappers and .bashrc, so `docker exec -it <container> claude` works too.
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`
 }
 
-// BASE_URL/AUTH_TOKEN are hard-set — a stale value means talking to Anthropic directly, which
-// would defeat the container. The model vars use := so `ANTHROPIC_MODEL=x claude` still wins.
-// Without gateway model discovery Claude Code rejects any model id it doesn't recognise —
-// "There's an issue with the selected model … it may not exist" — before sending a request.
-// The gateway answers both /models and /v1/models, which is what discovery needs.
+// The model vars use := so `ANTHROPIC_MODEL=x claude` still wins. Without gateway model
+// discovery Claude Code rejects unrecognised model ids client-side, before any request.
 const envFileLines = [
   `export ANTHROPIC_BASE_URL=${shellQuote(`http://127.0.0.1:${ccrConfig.port}`)}`,
   `export ANTHROPIC_AUTH_TOKEN=${shellQuote(ccrConfig.apiKey)}`,
@@ -301,8 +228,7 @@ const modelDefaults: Record<string, string | null> = {
   ANTHROPIC_MODEL: ccrConfig.defaultModel,
   ANTHROPIC_DEFAULT_OPUS_MODEL: ccrConfig.defaultModel,
   ANTHROPIC_DEFAULT_SONNET_MODEL: ccrConfig.defaultModel,
-  // Claude Code sends Haiku for titles, summaries and file suggestions; without a mapping
-  // those calls ask the gateway for a model no provider serves and fail mid-session.
+  // Claude Code sends Haiku for titles and summaries; unmapped, those calls fail mid-session.
   ANTHROPIC_DEFAULT_HAIKU_MODEL: ccrConfig.backgroundModel
 }
 for(const [name, value] of Object.entries(modelDefaults)) {
@@ -319,13 +245,8 @@ for(const [name, value] of Object.entries(modelDefaults)) {
   if(value && !process.env[name]) gatewayEnv[name] = value
 }
 
-// Pre-accept Claude Code's first-run flags so it launches straight into a session
-// instead of the onboarding wizard (theme picker, trust-folder, bypass warning).
-// CCR users typically have NO Anthropic account — CCR supplies the endpoint and token —
-// so we seed these UNCONDITIONALLY (the claude provider only does it alongside creds).
-//
-// We deliberately do NOT inject Claude.ai OAuth here: a real subscription token can make
-// Claude Code talk to Anthropic directly and ignore CCR's local endpoint, defeating routing.
+// No Claude.ai OAuth is injected: a real subscription token could make Claude Code talk to
+// Anthropic directly and ignore CCR's local endpoint.
 const CLAUDE_DIR = `${HOME_DIR}/.claude`
 const CLAUDE_JSON = `${HOME_DIR}/.claude.json`
 const CLAUDE_SETTINGS = `${CLAUDE_DIR}/settings.json`
@@ -341,7 +262,7 @@ try {
 claudeJson.hasCompletedOnboarding = true
 if(!claudeJson.theme) claudeJson.theme = "dark"
 
-// Pre-approve the token CCR expects so Claude doesn't prompt "use this custom API key?".
+// Pre-approved so Claude doesn't prompt "use this custom API key?".
 if(!claudeJson.customApiKeyResponses) {
   claudeJson.customApiKeyResponses = { approved: [ccrConfig.apiKey], rejected: [] }
 }
@@ -354,8 +275,7 @@ projects[APP_DIR].hasTrustDialogAccepted = true
 
 await writeFile(CLAUDE_JSON, JSON.stringify(claudeJson), { mode: 0o600 })
 
-// Suppress the bypass-permissions warning dialog (modern Claude Code gates it on this
-// settings key, not the legacy ~/.claude.json bypassPermissionsModeAccepted flag).
+// Suppresses the bypass-permissions dialog, which is gated on this key, not the legacy flag.
 let claudeSettings: Record<string, unknown> = {}
 try {
   claudeSettings = JSON.parse(await readFile(CLAUDE_SETTINGS, "utf-8"))
@@ -363,12 +283,10 @@ try {
   claudeSettings = {}
 }
 claudeSettings.skipDangerousModePermissionPrompt = true
-// Defensive: if any CCR version still installs its profile apiKeyHelper, drop it — it and our
-// ANTHROPIC_AUTH_TOKEN are mutually exclusive as far as Claude Code is concerned.
+// A stray profile apiKeyHelper and our ANTHROPIC_AUTH_TOKEN are mutually exclusive.
 delete claudeSettings.apiKeyHelper
 await writeFile(CLAUDE_SETTINGS, JSON.stringify(claudeSettings, null, 2), { mode: 0o600 })
 
-// Apply host git identity so commits made inside the container are attributed correctly.
 const gitUserName = process.env.GIT_USER_NAME
 const gitUserEmail = process.env.GIT_USER_EMAIL
 if(gitUserName) {
@@ -378,14 +296,9 @@ if(gitUserEmail) {
   await $`git config --global user.email ${gitUserEmail}`.quiet().nothrow()
 }
 
-// Ignore SIGINT at the bun (PID 1) level so ctrl+c inside the container
-// only reaches bash's job control, which kills the foreground job (claude)
-// without terminating the shell itself. The gateway is not in bash's foreground
-// process group, so it survives too.
+// Ignored at PID 1 so ctrl+c reaches bash's job control and kills only the foreground job.
 process.on("SIGINT", () => {})
-// `ccr serve` stops listening on SIGTERM but does not exit promptly, and it owns a core-gateway
-// grandchild bun can't signal directly. Exiting PID 1 right after is what actually tears the
-// container (and both processes) down; the signal is a courtesy so CCR can flush first.
+// `ccr serve` ignores SIGTERM in practice, so exiting PID 1 is what tears the container down.
 process.on("SIGTERM", () => {
   gateway.kill()
   process.exit(143)

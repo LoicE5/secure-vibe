@@ -12,18 +12,13 @@ export interface RunClaudeContainerOptions {
   gitConfig: GitIdentity | null
 }
 
-/**
- * Runs the Claude container: resolves the host's Claude credentials, mounts
- * ~/.claude read-only at /home/viber/.claude-host, injects CLAUDE_CREDENTIALS,
- * and delegates the actual spawn to the generic helper.
- */
+/** Runs the Claude container with the host's credentials and ~/.claude mounted read-only. */
 export async function runClaudeContainer(options: RunClaudeContainerOptions): Promise<number> {
   const credentialsJson = await resolveClaudeCredentials()
 
   const extraEnv: Record<string, string> = {}
   if(credentialsJson) {
-    // entrypoint.ts reads this and writes credentials inside the container —
-    // nothing is ever written back to the host's ~/.claude.
+    // The entrypoint writes these inside the container; the host's ~/.claude is never touched.
     extraEnv.CLAUDE_CREDENTIALS = credentialsJson
   }
 
