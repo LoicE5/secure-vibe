@@ -7,7 +7,7 @@ import { VALID_SAVE_MODES, VALID_RUNTIMES } from "./runtime"
 export interface BooleanFlag {
   name: string
   kind: "boolean"
-  key: "build" | "buildNoCache" | "pull" | "local"
+  key: "build" | "buildNoCache" | "pull" | "local" | "dind"
 }
 
 /** A value flag takes a value via `--flag=value` or `--flag value`. `values` lists completable choices (enums). */
@@ -25,6 +25,8 @@ export const FLAGS: readonly FlagSpec[] = [
   { name: "--build-no-cache", kind: "boolean", key: "buildNoCache" },
   { name: "--pull", kind: "boolean", key: "pull" },
   { name: "--local", kind: "boolean", key: "local" },
+  { name: "--dind", kind: "boolean", key: "dind" },
+  { name: "--docker", kind: "boolean", key: "dind" },
   { name: "--save", kind: "value", key: "save", values: VALID_SAVE_MODES },
   { name: "--runtime", kind: "value", key: "runtime", values: VALID_RUNTIMES },
   { name: "--command", kind: "value", key: "command" },

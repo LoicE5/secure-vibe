@@ -39,6 +39,8 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/home/viber/.bun/bin:${PATH}"
 
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
+COPY --chown=viber:viber src/assets/sandbox-prompt-nodind.md /tmp/sandbox-prompt-nodind.md
+RUN cat /tmp/sandbox-prompt-nodind.md >> /home/viber/.secure-vibe-sandbox.md && rm /tmp/sandbox-prompt-nodind.md
 
 # /home/viber/bin sits first so the provider wrappers shadow the real binaries on PATH,
 # including on the explicit-command entrypoint path, which never sources .bashrc.

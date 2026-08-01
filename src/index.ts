@@ -27,6 +27,7 @@ const buildFlag    = args.build        || getBoolEnv("BUILD")
 const buildNCFlag  = args.buildNoCache || getBoolEnv("BUILD_NO_CACHE")
 const pullFlag     = args.pull         || getBoolEnv("PULL")
 const localFlag    = args.local        || getBoolEnv("LOCAL")
+const dindFlag     = args.dind         || getBoolEnv("DIND")
 const providerId   = args.provider     ?? "claude"
 
 if(localFlag && providerId !== "ccr") {
@@ -44,11 +45,16 @@ console.info(`  Mounting: ${workDir}`)
 const saveMode = await selectSaveOption(saveValue)
 
 const runtime = await selectRuntime(rtValue)
+
+if(dindFlag && runtime !== "docker") {
+  console.warn(`  ⚠ --dind is only tested on docker; nesting a rootless daemon inside '${runtime}' may fail.`)
+}
+
 const gitConfig = await resolveGitConfig()
 
 if(saveMode !== "no") await saveDirectory(workDir, saveMode)
 
-const providerSpec = resolveProviderSpec(providerId)
+const providerSpec = resolveProviderSpec(providerId, dindFlag)
 await ensureImage(runtime, providerSpec, buildFlag, buildNCFlag, pullFlag)
 
 // After ensureImage, so a pre-flight process.exit never leaves files displaced.
@@ -65,7 +71,7 @@ try {
     secretsDir = await moveSecretsOut(workDir, excludedFiles)
     console.info(`  Secrets moved: ${excludedFiles.length} file(s) → ${secretsDir}`)
   }
-  exitCode = await runProvider({ runtime, workDir, command: cmdValue, gitConfig, local: localFlag })
+  exitCode = await runProvider({ runtime, spec: providerSpec, workDir, command: cmdValue, gitConfig, local: localFlag })
 } finally {
   if(secretsDir) await moveSecretsBack(workDir, secretsDir)
 }

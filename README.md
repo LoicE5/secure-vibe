@@ -16,7 +16,7 @@ Why it's safe:
 - Host credentials and config are mounted **read-only** and injected into the container's own copies — nothing is ever written back to the host.
 - The image is hardened Ubuntu **26.04 LTS**: root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published.
 
-**Current version: 3.9.1** — see the [CHANGELOG](CHANGELOG.md).
+**Current version: 3.11.0** — see the [CHANGELOG](CHANGELOG.md).
 
 ## Contents
 
@@ -26,6 +26,7 @@ Why it's safe:
 - [Run](#run)
 - [CLI Parameters](#cli-parameters)
 - [Images](#images)
+- [Docker-in-Docker](#docker-in-docker)
 - [Environment Variables](#environment-variables)
 - [Config resolution](#config-resolution)
 - [Providers](#providers)
@@ -92,6 +93,7 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 | `--codex`, `--gpt` | Use the OpenAI Codex CLI (`codex`) provider (see [Providers](#providers)) |
 | `--vibe`, `--lechat`, `--mistral`, `--miaou` | Use the Mistral Vibe CLI (`vibe`) provider (see [Providers](#providers)) |
 | `--local` | (ccr only) Allow the container to reach models running on the host machine (adds a host-gateway DNS entry; no ports, no host network) |
+| `--dind`, `--docker` | Run the docker-in-docker image variant, giving the agent its own rootless Docker daemon (see [Docker-in-Docker](#docker-in-docker)) |
 | `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
 | `--runtime=docker\|podman` | Container runtime to use |
 | `--command=<cmd>` | Command to run inside the container (default: the selected provider's agent). Shell metacharacters supported. |
@@ -104,9 +106,41 @@ bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
 
 Each provider has its own image, published to GHCR as `ghcr.io/loice5/secure-vibe/<provider>:latest` (`claude`, `antigravity`, `ccr`, `codex`, `vibe`). With no flags, secure-vibe uses the local image if present (checking the registry for updates at most once a day), pulls it if missing, and falls back to building locally from `docker/<provider>.dockerfile` if the pull fails. Use `--pull` to force-pull, or `--build` / `--build-no-cache` to force a local build.
 
-All five share a base image, `ghcr.io/loice5/secure-vibe/base:latest`, built from `docker/base/base.dockerfile`. It holds everything that isn't provider-specific: the hardened Ubuntu layer, the `viber` user, Homebrew + gcc, bun, the brew seed, and the sandbox prompt. Each provider Dockerfile is then just its own CLI install and wrappers on top of it. The weekly publish workflow builds and pushes the base in a job that gates the provider matrix, so the five images are always built against the base from the same run.
+All five share a base image, `ghcr.io/loice5/secure-vibe/base:latest`, built from `docker/shared/base.dockerfile`. It holds everything that isn't provider-specific: the hardened Ubuntu layer, the `viber` user, Homebrew + gcc, bun, the brew seed, and the sandbox prompt. Each provider Dockerfile is then just its own CLI install and wrappers on top of it. The weekly publish workflow builds and pushes the base in a job that gates the provider matrix, so the five images are always built against the base from the same run.
 
 Pulling a published provider image is unaffected: the images are self-contained once built, and the base is never fetched at runtime. Local builds don't need the registry either — `--build` builds the base under that same tag first, and Docker resolves `FROM` against local images before reaching for the registry, so the offline fallback above still works end to end.
+
+Every provider also has a docker-in-docker variant, `ghcr.io/loice5/secure-vibe/<provider>:latest-dind`, built from `docker/shared/dind.dockerfile` on top of the plain provider image. It is the same image plus a Docker install, and it is only used when you pass `--dind`.
+
+## Docker-in-Docker
+
+By default the sandbox has no Docker daemon. `--dind` (or `--docker`) switches to the `-dind` image variant, which carries a full Docker install — `docker`, `docker buildx`, `docker compose` — and starts a **rootless** daemon before handing over to the agent:
+
+```sh
+secure-vibe --claude --dind
+secure-vibe --codex --dind --command "docker compose up -d"
+```
+
+This is the one place secure-vibe trades away isolation, deliberately and in a bounded way. Be clear about what changes:
+
+- **The outer container gains `--privileged`.** RootlessKit needs it: Docker's default seccomp profile blocks `clone(CLONE_NEWUSER)`, its default AppArmor profile denies the mounts RootlessKit performs, and `/dev/net/tun` — which the network driver needs — is absent from a stock container's `/dev`.
+- **The agent is still not root.** It runs as `viber` (uid 1000), root is still locked with a `nologin` shell, and there is still no sudo. `--privileged` mostly grants capabilities and device access that a non-root uid cannot reach anyway.
+- **Nested containers cannot reach your machine.** Because the daemon is rootless, root inside a nested container is an unprivileged subuid (100000+). `docker run -v /:/host` inside the sandbox shows you the *sandbox's* filesystem, not yours.
+- **Seccomp and AppArmor are off for the agent process itself**, independently of anything nested. That is the honest cost of the feature.
+- **`--exclude` is not weakened.** Excluded files are physically moved off your machine before the container starts, so nothing running inside — nested or not — can see them.
+
+If you would rather not use `--privileged`, the narrow equivalent is `--security-opt seccomp=unconfined --security-opt apparmor=unconfined --device /dev/net/tun`. secure-vibe does not use it by default: `--device` fails the whole `docker run` when the node is missing on the Docker host, and on macOS that host is a VM secure-vibe cannot inspect.
+
+Known limitations, all inherent to rootless nesting:
+
+- Nested containers running as root write files into `~/app` owned by uid 100000+ on your machine. Pass `--user "$(id -u):$(id -g)"` when bind-mounting the workspace into one.
+- Cgroups are unavailable, so `--memory`, `--cpus` and similar limits are accepted and then ignored.
+- Ports published by nested containers are reachable from inside the sandbox only.
+- With `--ccr --local --dind`, `host.docker.internal` resolves for the agent but not inside nested containers.
+- Networking goes through a userspace stack, so nested `docker pull` is slower than on the host.
+- Only tested on `docker`; podman is not supported.
+
+Nested images and layers live in a `secure-vibe-docker` volume, so they survive between sessions. Reset it with `bun run prune:docker`. A second `--dind` session started while one is running gets a throwaway data root instead — two daemons sharing one data root would corrupt it.
 
 ## Environment Variables
 
@@ -122,6 +156,7 @@ secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls 
 | `BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
 | `PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
 | `LOCAL` | (ccr only) Allow the container to reach host-machine models: `true`, `1`, or `yes`. Equivalent to `--local` |
+| `DIND` | Use the docker-in-docker image variant: `true`, `1`, or `yes`. Equivalent to `--dind` |
 | `EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
 | `ANTIGRAVITY_API_KEY` | Google AI Studio API key, passed through to the Antigravity provider for non-interactive auth (see [Providers](#providers)) |
 | `MISTRAL_API_KEY` | Mistral API key, used by the Vibe provider when set (takes priority over the OS keyring and `~/.vibe/.env`, see [Providers](#providers)) |
@@ -279,6 +314,7 @@ Because Vibe does not support an append-system-prompt flag, secure-vibe injects 
 | `bun run build` | Compile standalone binaries for all supported platforms into `dist/secure-vibe-<target>` |
 | `bun run build:linux-x64` / `build:linux-arm64` / `build:macos-x64` / `build:macos-arm64` | Compile for a single platform |
 | `bun run prune:brew` | Delete the shared persistent Homebrew volume (all providers) |
+| `bun run prune:docker` | Delete the shared nested-Docker volume used by `--dind` |
 | `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
 | `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
 | `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
@@ -288,6 +324,9 @@ Because Vibe does not support an append-system-prompt flag, secure-vibe injects 
 | `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` / `docker:build:codex` / `docker:build:vibe` | Build a provider image locally, rebuilding the shared base first (append `:no-cache` to any of them to skip the layer cache) |
 | `bun run docker:build:base` | Build only the shared base image |
 | `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` / `docker:pull:codex` / `docker:pull:vibe` / `docker:pull:base` | Pull an image from GHCR |
+| `bun run docker:build:claude:dind` / `…:antigravity:dind` / `…:ccr:dind` / `…:codex:dind` / `…:vibe:dind` | Build a provider's docker-in-docker variant locally, building the plain image first |
+| `bun run docker:pull:claude:dind` / `…:antigravity:dind` / `…:ccr:dind` / `…:codex:dind` / `…:vibe:dind` | Pull a docker-in-docker variant from GHCR |
+| `bun run prune:image:claude:dind` / `…:antigravity:dind` / `…:ccr:dind` / `…:codex:dind` / `…:vibe:dind` | Remove a locally built docker-in-docker variant |
 
 ## Shell completion
 
@@ -340,4 +379,5 @@ If an excluded file is **not** gitignored, a warning is printed — the move is 
 - **Blocked mounts.** System paths cannot be used as the working directory: `~`, `/`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/var`, `/tmp`, `/proc`, `/sys`, `/dev`, and `/boot` are all rejected.
 - **Read-only host config.** Provider config directories (`~/.claude`, `~/.gemini`, `~/.claude-code-router`, `~/.codex`, `~/.vibe`) are mounted read-only; credentials are injected into the container's own copies and nothing is written back to the host.
 - **Hardened image.** Root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published. The agent CLIs and `bun` are image layers; user packages are installed rootless via brew.
+- **`--dind` relaxes this on purpose.** It adds `--privileged` to the container and runs it without seccomp or AppArmor confinement. The agent stays non-root and nested containers stay confined to an unprivileged subuid range, but the default image is the stronger posture — see [Docker-in-Docker](#docker-in-docker) for the full trade-off.
 - **Git identity.** Your host `user.name` / `user.email` are forwarded into the container (via `GIT_USER_NAME` / `GIT_USER_EMAIL`) so commits made inside are attributed to you; if none is configured, it falls back to `Claude <noreply@anthropic.com>`.

@@ -1,4 +1,5 @@
 import type { ProviderId, ProviderRunner, ProviderSpec } from "../types"
+import { toDindSpec } from "../utils/dind"
 import { runClaudeContainer } from "./claude/run-claude-container"
 import { CLAUDE_PROVIDER_SPEC } from "./claude/spec"
 import { runAntigravityContainer } from "./antigravity/run-antigravity-container"
@@ -39,11 +40,11 @@ export function resolveProviderRunner(providerId: ProviderId): ProviderRunner {
 }
 
 /** Returns the spec for `providerId`, or exits (code 1) if it isn't implemented. */
-export function resolveProviderSpec(providerId: ProviderId): ProviderSpec {
+export function resolveProviderSpec(providerId: ProviderId, dind = false): ProviderSpec {
   const spec = PROVIDER_SPECS[providerId]
   if(!spec) {
     console.error(`✗ Provider '${providerId}' is not implemented yet.`)
     process.exit(1)
   }
-  return spec
+  return dind ? toDindSpec(spec) : spec
 }

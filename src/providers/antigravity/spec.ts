@@ -12,5 +12,6 @@ export const ANTIGRAVITY_PROVIDER_SPEC: ProviderSpec = {
   dockerfilePath: ANTIGRAVITY_DOCKERFILE_PATH,
   // Shared with Claude: the volume only caches provider-neutral brew tooling.
   brewVolumeName: "secure-vibe-brew",
-  imageCheckCachePath: ANTIGRAVITY_IMAGE_CHECK_PATH
+  imageCheckCachePath: ANTIGRAVITY_IMAGE_CHECK_PATH,
+  dind: false
 }

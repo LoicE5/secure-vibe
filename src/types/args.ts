@@ -11,5 +11,6 @@ export interface ParsedArgs {
   buildNoCache: boolean
   pull: boolean
   local: boolean
+  dind: boolean
   provider: ProviderId | null
 }

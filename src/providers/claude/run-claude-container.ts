@@ -1,12 +1,12 @@
-import type { Runtime, GitIdentity } from "../../types"
+import type { Runtime, GitIdentity, ProviderSpec } from "../../types"
 import { CLAUDE_DIR } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import { resolveClaudeCredentials } from "./credentials"
-import { CLAUDE_PROVIDER_SPEC } from "./spec"
 
 /** Options the orchestrator passes to runClaudeContainer. */
 export interface RunClaudeContainerOptions {
   runtime: Runtime
+  spec: ProviderSpec
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null
@@ -24,7 +24,7 @@ export async function runClaudeContainer(options: RunClaudeContainerOptions): Pr
 
   return spawnContainer({
     runtime: options.runtime,
-    spec: CLAUDE_PROVIDER_SPEC,
+    spec: options.spec,
     workDir: options.workDir,
     gitConfig: options.gitConfig,
     command: options.command,

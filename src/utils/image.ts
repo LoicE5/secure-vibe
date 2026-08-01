@@ -1,16 +1,25 @@
 import { mkdir } from "fs/promises"
 import { dirname } from "path"
 import { $ } from "bun"
-import { PROJECT_DIR, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME } from "../constants"
+import { PROJECT_DIR, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME, DIND_DOCKERFILE_PATH } from "../constants"
 import type { Runtime, ProviderSpec } from "../types"
 
 /** Runs one `<runtime> build`, exiting the process on failure. */
-async function runBuild(runtime: Runtime, dockerfile: string, tag: string, noCache: boolean): Promise<void> {
+async function runBuild(
+  runtime: Runtime,
+  dockerfile: string,
+  tag: string,
+  noCache: boolean,
+  buildArguments: Record<string, string> = {}
+): Promise<void> {
   const buildArgs = [
     runtime, "build",
     "-f", dockerfile,
     "-t", tag
   ]
+  for(const [name, value] of Object.entries(buildArguments)) {
+    buildArgs.push("--build-arg", `${name}=${value}`)
+  }
   if(noCache) buildArgs.push("--no-cache")
   buildArgs.push(PROJECT_DIR)
 
@@ -30,16 +39,23 @@ async function buildImage(runtime: Runtime, spec: ProviderSpec, noCache: boolean
   console.info(`  Building base image "${BASE_IMAGE_NAME}"…`)
   await runBuild(runtime, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME, noCache)
 
-  await runBuild(runtime, spec.dockerfilePath, spec.imageName, noCache)
+  const providerImageName = spec.parentImageName ?? spec.imageName
+  await runBuild(runtime, spec.dockerfilePath, providerImageName, noCache)
+
+  if(!spec.dind) return
+
+  console.info(`  Adding the docker-in-docker layer to "${spec.imageName}"…`)
+  await runBuild(runtime, DIND_DOCKERFILE_PATH, spec.imageName, noCache, { BASE_IMAGE: providerImageName })
 }
 
-/** True when both the provider Dockerfile and the shared base Dockerfile are present. */
+/** True when every Dockerfile the build chain needs is present. */
 async function dockerfilesAvailable(spec: ProviderSpec): Promise<boolean> {
-  const [provider, base] = await Promise.all([
+  const [provider, base, dind] = await Promise.all([
     Bun.file(spec.dockerfilePath).exists(),
-    Bun.file(BASE_DOCKERFILE_PATH).exists()
+    Bun.file(BASE_DOCKERFILE_PATH).exists(),
+    spec.dind ? Bun.file(DIND_DOCKERFILE_PATH).exists() : Promise.resolve(true)
   ])
-  return provider && base
+  return provider && base && dind
 }
 
 /** Pulls `spec.imageName` from its registry. Returns true on success. */
@@ -158,6 +174,7 @@ export async function ensureImage(
   console.info(`  Pull failed. Building from Dockerfile…`)
   if(!(await dockerfilesAvailable(spec))) {
     console.error(`✗ No Dockerfile found at ${spec.dockerfilePath} (or ${BASE_DOCKERFILE_PATH}) and pull failed. Cannot start.`)
+    if(spec.dind) console.error(`  The "${spec.imageName}" variant may not be published yet — retry without --dind, or build from the project source.`)
     process.exit(1)
   }
 
