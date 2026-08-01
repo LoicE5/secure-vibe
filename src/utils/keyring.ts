@@ -1,10 +1,6 @@
 import { $ } from "bun"
 
-/**
- * Reads a secret from the platform keyring. macOS: Keychain via `security`.
- * Linux: Secret Service (gnome-keyring/KWallet) via `secret-tool` (needs libsecret-tools).
- * Returns null when the platform is unsupported or the secret is absent/unreadable.
- */
+/** Reads a secret from the platform keyring (macOS `security`, Linux `secret-tool`), or null. */
 export async function readKeyringSecret(service: string, account: string): Promise<string | null> {
   if(process.platform === "darwin") {
     const raw = await $`security find-generic-password -s ${service} -a ${account} -w`

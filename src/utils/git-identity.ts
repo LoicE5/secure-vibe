@@ -15,14 +15,9 @@ async function tryGitConfig(args: string[]): Promise<string | null> {
   }
 }
 
-/**
- * Resolves the host git identity (user.name + user.email), preferring local repo
- * config, then global. Falls back to a hard-coded "Claude" identity if neither is set
- * — and logs the fallback in red so it's visible.
- */
+/** Resolves the host git identity, falling back to a hard-coded "Claude" one when unset. */
 export async function resolveGitConfig(): Promise<GitIdentity> {
-  // git config (no flag) reads local → global → system automatically.
-  // Fall back to --global explicitly in case the cwd is not a repo.
+  // No flag reads local → global → system; --global covers the cwd not being a repo.
   const name = (await tryGitConfig(["user.name"])) ?? (await tryGitConfig(["--global", "user.name"]))
   const email = (await tryGitConfig(["user.email"])) ?? (await tryGitConfig(["--global", "user.email"]))
 

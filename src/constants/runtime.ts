@@ -7,10 +7,7 @@ export const VALID_SAVE_MODES: SaveMode[] = ["zip", "copy", "no"]
 /** Valid CLI values for --runtime. Mirrors the Runtime type as a value so the parser and completion can share it. */
 export const VALID_RUNTIMES: Runtime[] = ["docker", "podman"]
 
-/**
- * Exit codes that indicate a normal user-initiated termination (e.g. typing exit,
- * pressing Ctrl+C). These are mapped to 0 so Bun doesn't print a script error.
- */
+/** User-initiated terminations (exit, Ctrl+C), mapped to 0 so Bun prints no script error. */
 export const CLEAN_EXIT_CODES = new Set<number>([
   130, // SIGINT (Ctrl+C / shell exit)
   143 // SIGTERM

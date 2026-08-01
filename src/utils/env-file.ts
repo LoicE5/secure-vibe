@@ -1,20 +1,7 @@
 import { readFile } from "fs/promises"
 import { join } from "path"
 
-/**
- * Minimal, dependency-free `.env` reader. The project has no dotenv dependency and
- * we don't want one — this only needs to be a lookup source for env-var *names* that
- * a CCR config.json references via `$VAR`/`${VAR}`. It does NOT mutate process.env and
- * performs NO `$` expansion of values inside the file.
- *
- * Parsing rules (intentionally conservative):
- *   - Skip blank lines and lines whose first non-space char is `#`.
- *   - Split each line on the FIRST `=`; trim the key.
- *   - Accept only keys matching ^[A-Za-z_][A-Za-z0-9_]*$ (silently skip others).
- *   - Trim the value, then strip ONE matching surrounding quote pair ("…" or '…').
- *
- * Returns {} when <dir>/.env is missing or unreadable.
- */
+/** Minimal `.env` reader: no process.env mutation, no `$` expansion, {} when unreadable. */
 export async function loadDotEnv(dir: string): Promise<Record<string, string>> {
   const raw = await readFile(join(dir, ".env"), "utf-8").catch(() => null)
   if(raw === null) return {}
@@ -39,11 +26,7 @@ export async function loadDotEnv(dir: string): Promise<Record<string, string>> {
   return result
 }
 
-/**
- * Returns the unique set of env-var names referenced as `$VAR` or `${VAR}` in `text`.
- * Used to discover which variables a CCR config.json wants interpolated, so the runner
- * can forward exactly those (least privilege) and nothing else.
- */
+/** Returns the unique env-var names referenced as `$VAR` or `${VAR}` in `text`. */
 export function extractVarTokens(text: string): string[] {
   const names = new Set<string>()
   const pattern = /\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g

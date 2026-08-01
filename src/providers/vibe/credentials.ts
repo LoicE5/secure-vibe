@@ -6,12 +6,7 @@ import { readKeyringSecret } from "../../utils/keyring"
 const KEYRING_SERVICES = ["ai.mistral.vibe", "vibe"] as const
 const API_KEY_ENV_VAR = "MISTRAL_API_KEY"
 
-/**
- * Resolves the host's Mistral API key, mirroring vibe's own persistence order:
- * MISTRAL_API_KEY env → OS keyring (service ai.mistral.vibe, legacy "vibe") → ~/.vibe/.env.
- * The runner injects it as MISTRAL_API_KEY, which vibe reads process-env-first inside
- * the container. Exits the process (code 1) when nothing is found.
- */
+/** Resolves the Mistral API key in vibe's own order: env → keyring → ~/.vibe/.env, else exits. */
 export async function resolveVibeCredentials(): Promise<string> {
   const fromEnv = process.env[API_KEY_ENV_VAR]
   if(fromEnv) {

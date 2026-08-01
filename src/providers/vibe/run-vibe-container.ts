@@ -14,17 +14,11 @@ export interface RunVibeContainerOptions {
   gitConfig: GitIdentity | null
 }
 
-/**
- * Runs the Mistral Vibe container: resolves the host's Mistral API key, mounts
- * ~/.vibe read-only at /home/viber/.vibe-host (only when it exists — an env-key-only
- * host may not have one), injects MISTRAL_API_KEY, and delegates the actual spawn
- * to the generic helper.
- */
+/** Runs the Vibe container with the host's API key and ~/.vibe mounted read-only if present. */
 export async function runVibeContainer(options: RunVibeContainerOptions): Promise<number> {
   const apiKey = await resolveVibeCredentials()
 
-  // vibe reads MISTRAL_API_KEY process-env-first, so it beats anything mirrored from the
-  // host. SECURE_VIBE_HOST_HOME lets the entrypoint remap host paths baked into config.toml.
+  // vibe reads MISTRAL_API_KEY process-env-first, so it beats anything mirrored from the host.
   const extraEnv: Record<string, string> = {
     MISTRAL_API_KEY: apiKey,
     SECURE_VIBE_HOST_HOME: homedir()

@@ -6,10 +6,7 @@ function isSaveMode(value: string): value is SaveMode {
   return (VALID_SAVE_MODES as readonly string[]).includes(value)
 }
 
-/**
- * Validates the --save CLI value. Null → "no" (with a hint about backups). Invalid → "no" + warning.
- * Returns the chosen mode without prompting.
- */
+/** Validates the --save value without prompting; anything unusable falls back to "no". */
 export async function selectSaveOption(preValue: string | null): Promise<SaveMode> {
   if(preValue === null) {
     console.info(`  Tip: pass --save=zip or --save=copy to back up this directory first, in case you need to roll back the CLI's changes.`)

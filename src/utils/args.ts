@@ -2,14 +2,7 @@ import type { ParsedArgs, ProviderId } from "../types"
 import type { BooleanFlag, ValueFlag } from "../constants"
 import { FLAGS, PROVIDER_FLAGS } from "../constants"
 
-/**
- * Parses process.argv into a ParsedArgs object. Unknown flags are silently ignored.
- * The first positional becomes `directory`; remaining positionals join into `command`
- * (unless --command was passed explicitly).
- *
- * Boolean/value flags are driven by the shared FLAGS spec (src/constants/flags.ts),
- * the same source the dynamic completion handler reads — so the two never drift.
- */
+/** Parses process.argv per the FLAGS spec: first positional is `directory`, the rest `command`. */
 export function parseArgs(): ParsedArgs {
   const argv = process.argv.slice(2)
   const positionals: string[] = []
@@ -47,7 +40,6 @@ export function parseArgs(): ParsedArgs {
     }
 
     if(!argument.startsWith("-")) positionals.push(argument)
-    // Unknown flags are ignored
   }
 
   return {

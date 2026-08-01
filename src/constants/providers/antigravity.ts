@@ -4,10 +4,7 @@ import { join } from "path"
 /** Host's ~/.gemini — agy settings/state. Mounted read-only, mirrored in. */
 export const GEMINI_DIR = join(homedir(), ".gemini")
 
-/**
- * agy's token file when it runs in a container (it detects /.dockerenv and skips the
- * keyring). The entrypoint writes the host token here so agy starts logged in.
- */
+/** Where agy reads its token in a container, having detected /.dockerenv and skipped the keyring. */
 export const AGY_TOKEN_REL_PATH = "antigravity-cli/antigravity-oauth-token"
 
 /** Same file on a Linux host that already ran agy headless — read directly if present. */

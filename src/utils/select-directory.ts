@@ -1,10 +1,7 @@
 import { resolve } from "path"
 import { isDirectory, isBannedDirectory } from "./fs"
 
-/**
- * Resolves the working directory: null/"."/"" → cwd, otherwise absolute resolve of the input.
- * Exits the process (code 1) if the path is missing, not a directory, or in BANNED_DIRS.
- */
+/** Resolves the working directory, exiting (code 1) if it is missing or in BANNED_DIRS. */
 export async function selectDirectory(preValue: string | null): Promise<string> {
   const targetPath = (preValue === null || preValue === "." || preValue === "") ? process.cwd() : resolve(preValue)
 

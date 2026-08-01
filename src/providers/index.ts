@@ -28,10 +28,7 @@ export const PROVIDER_SPECS: Partial<Record<ProviderId, ProviderSpec>> = {
   vibe: VIBE_PROVIDER_SPEC
 }
 
-/**
- * Returns the runner registered for `providerId`, or exits the process (code 1)
- * with a helpful message if it isn't implemented yet.
- */
+/** Returns the runner for `providerId`, or exits (code 1) if it isn't implemented. */
 export function resolveProviderRunner(providerId: ProviderId): ProviderRunner {
   const runner = PROVIDER_RUNNERS[providerId]
   if(!runner) {
@@ -41,10 +38,7 @@ export function resolveProviderRunner(providerId: ProviderId): ProviderRunner {
   return runner
 }
 
-/**
- * Returns the spec registered for `providerId`, or exits the process (code 1)
- * if it isn't implemented yet. Used by the generic image helpers.
- */
+/** Returns the spec for `providerId`, or exits (code 1) if it isn't implemented. */
 export function resolveProviderSpec(providerId: ProviderId): ProviderSpec {
   const spec = PROVIDER_SPECS[providerId]
   if(!spec) {

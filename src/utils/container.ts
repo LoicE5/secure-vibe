@@ -16,12 +16,7 @@ export interface SpawnContainerOptions {
   extraArgs?: ReadonlyArray<string>
 }
 
-/**
- * Spawns the provider container with the shared scaffolding every CLI needs:
- * workdir mount, brew volume, host git identity. The caller layers on
- * provider-specific env vars (e.g. CLAUDE_CREDENTIALS) and bind mounts.
- * Returns the container's exit code.
- */
+/** Spawns the provider container with the shared workdir mount, brew volume and git identity. */
 export async function spawnContainer(options: SpawnContainerOptions): Promise<number> {
   const { runtime, spec, workDir, gitConfig, command, extraEnv = {}, extraMounts = [], extraArgs = [] } = options
 
@@ -45,14 +40,12 @@ export async function spawnContainer(options: SpawnContainerOptions): Promise<nu
     args.push("-e", `${key}=${value}`)
   }
 
-  // Extra docker-run flags must attach to `docker run` (before the image name),
-  // not the in-container command that follows it.
+  // Must attach to `docker run`, before the image name, not the command that follows it.
   args.push(...extraArgs)
 
   args.push(spec.imageName)
 
   if(command !== null) {
-    // Wrap in bash -c if the command contains shell metacharacters or whitespace.
     if(/[\s&|;<>$]/.test(command)) {
       args.push("bash", "-c", command)
     } else {

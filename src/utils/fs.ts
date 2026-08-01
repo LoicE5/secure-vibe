@@ -3,7 +3,7 @@ import { BANNED_DIRS } from "../constants"
 
 /** Returns true if `path` resolves to a directory. Missing paths return false silently; other stat errors are logged at debug. */
 export async function isDirectory(path: string): Promise<boolean> {
-  // Bun.file(path).exists() reports false for directories in some Bun versions, so use fs.access.
+  // Bun.file().exists() reports false for directories in some Bun versions.
   const accessible = await access(path).then(() => true).catch(() => false)
   if(!accessible) return false
   try {

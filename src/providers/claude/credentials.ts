@@ -3,11 +3,7 @@ import { join } from "path"
 import { $ } from "bun"
 import { CLAUDE_DIR, CLAUDE_JSON_PATH } from "../../constants"
 
-/**
- * Reads ~/.claude.json and returns its raw contents if it contains a claudeAiOauth field.
- * Returns null when the file is missing, unreadable, or doesn't carry auth tokens.
- * Claude 2.1.63+ stores credentials there (not in ~/.claude/.credentials.json).
- */
+/** Reads ~/.claude.json, the primary credential store since Claude 2.1.63, or null. */
 export async function readClaudeJson(): Promise<string | null> {
   const exists = await access(CLAUDE_JSON_PATH, constants.R_OK).then(() => true).catch(() => false)
   if(!exists) return null
@@ -23,20 +19,14 @@ export async function readClaudeJson(): Promise<string | null> {
   }
 }
 
-/**
- * Returns the credentials JSON string to inject into the container via env var.
- * Cascade: ~/.claude.json → macOS keychain (darwin) → legacy ~/.claude/.credentials.json.
- * Exits the process (code 1) when no credential source is reachable.
- */
+/** Resolves credentials to inject: ~/.claude.json → macOS keychain → legacy file, else exits. */
 export async function resolveClaudeCredentials(): Promise<string | null> {
-  // Primary: read from ~/.claude.json (Claude 2.1.63+, works on all platforms)
   const fromFile = await readClaudeJson()
   if(fromFile) {
     console.info("  Credentials read from ~/.claude.json.")
     return fromFile
   }
 
-  // macOS fallback: pull from keychain (older Claude or fresh install)
   if(process.platform === "darwin") {
     console.info("  ~/.claude.json not found. Trying macOS keychain…")
     try {
@@ -54,7 +44,6 @@ export async function resolveClaudeCredentials(): Promise<string | null> {
     }
   }
 
-  // Linux: check old .credentials.json location as last resort
   const legacyFile = join(CLAUDE_DIR, ".credentials.json")
   const legacyExists = await access(legacyFile, constants.R_OK).then(() => true).catch(() => false)
   if(legacyExists) {

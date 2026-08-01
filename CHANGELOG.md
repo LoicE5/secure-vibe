@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.1
+
+- Strip the comment bloat that had accumulated across the Dockerfiles, container entrypoints, wrapper scripts and CLI sources: file-level header blocks, section banners, and every comment that restated the line below it are gone, leaving at most one short line of JSDoc per function and one line above genuinely non-obvious logic. Behaviour is unchanged — the diff is comment-only
+
 ## 3.9.0
 
 - Migrate the CCR image to **claude-code-router 3.x**, which fixes the broken weekly image build: CCR `3.0.0` added a hard `better-sqlite3` dependency that `bun install` cannot build (its `prebuild-install` path is unsupported under bun, and it fell back to `node-gyp` with no Python in the image)

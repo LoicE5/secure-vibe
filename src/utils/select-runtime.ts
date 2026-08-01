@@ -1,10 +1,7 @@
 import type { Runtime } from "../types"
 import { commandExists, testRuntime } from "./runtime-detect"
 
-/**
- * Detects which container runtime to use. Defaults to docker when both are available.
- * Exits the process (code 1) if neither runtime is reachable.
- */
+/** Detects the container runtime, preferring docker, or exits (code 1) if none is reachable. */
 export async function selectRuntime(preValue: string | null): Promise<Runtime> {
   const dockerAvailable = (await commandExists("docker")) && (await testRuntime("docker"))
   const podmanAvailable = (await commandExists("podman")) && (await testRuntime("podman"))
@@ -26,7 +23,6 @@ export async function selectRuntime(preValue: string | null): Promise<Runtime> {
     return "podman"
   }
 
-  // Both available — use preValue if it names one, otherwise default to docker.
   if(preValue !== null) {
     const normalized = preValue.toLowerCase()
     if(normalized === "docker" || normalized === "podman") {

@@ -2,11 +2,7 @@ import { dirname, basename, join } from "path"
 import type { RunScrollingOptions, SaveAction } from "../types"
 import { timestamp } from "./fs"
 
-/**
- * Runs a child process. On a TTY, streams the last `windowSize` lines in place
- * (overwriting), so long tools like rsync don't flood the screen. Non-TTY falls
- * back to direct inherited stdio. Returns the child's exit code.
- */
+/** Runs a child process, streaming the last `windowSize` lines in place when on a TTY. */
 async function runScrolling(args: string[], opts: RunScrollingOptions = {}): Promise<number> {
   const { cwd, windowSize = 5 } = opts
 
@@ -46,10 +42,7 @@ async function runScrolling(args: string[], opts: RunScrollingOptions = {}): Pro
   return childProc.exited
 }
 
-/**
- * Backs up `workDir` next to itself, either as a .zip archive or as a directory copy
- * via rsync. Errors are logged, not thrown — the orchestrator still proceeds.
- */
+/** Backs up `workDir` next to itself as a .zip or an rsync copy. Errors are logged, not thrown. */
 export async function saveDirectory(workDir: string, mode: SaveAction): Promise<void> {
   const parent = dirname(workDir)
   const name = basename(workDir)
