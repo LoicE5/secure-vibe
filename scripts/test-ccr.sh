@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # End-to-end test suite for the CCR provider.
 #
-#   bash scripts/test-ccr.sh          # read-only checks + a real round trip
-#   bash scripts/test-ccr.sh --full   # also exercises the failure path (backs up your config)
+#   bash scripts/test-ccr.sh            # rebuilds the image, then checks + a real round trip
+#   bash scripts/test-ccr.sh --full     # also exercises the failure path (backs up your config)
+#   NOBUILD=1 bash scripts/test-ccr.sh  # reuse the current image (you just built it by hand)
+#   NOCACHE=1 bash scripts/test-ccr.sh  # full --build-no-cache rebuild first
 #
 # Runs in two modes: on the host it drives the container, and inside the container it runs the
 # runtime suite (the repo is mounted, so it is the same file both times).
@@ -105,7 +107,13 @@ FULL=0
 
 CFG="$HOME/.claude-code-router/config.json"
 IMAGE="ghcr.io/loice5/secure-vibe/ccr:latest"
-CLI="bun src/index.ts"
+# --build so the suite tests the working tree. Without it the CLI is local-image-first with a
+# daily registry check, so a stale published image can be pulled and tested instead.
+# NOBUILD=1 skips it when you have just built by hand; --build-no-cache for a full rebuild.
+CLI="bun src/index.ts --ccr"
+BUILD_FLAG="--build"
+[ "${NOBUILD:-0}" = "1" ] && BUILD_FLAG=""
+[ "${NOCACHE:-0}" = "1" ] && BUILD_FLAG="--build-no-cache"
 
 # macOS ships shasum, Linux sha256sum
 sha() {
@@ -116,7 +124,13 @@ sha() {
 head_ "Host preflight"
 command -v docker >/dev/null && ok "docker on PATH" || { bad "docker not found"; exit 1; }
 docker info >/dev/null 2>&1 && ok "docker daemon reachable" || { bad "docker daemon not running"; exit 1; }
-docker image inspect "$IMAGE" >/dev/null 2>&1 && ok "image present" || bad "image missing" "run: bun run docker:build:ccr"
+if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  ok "image present"
+elif [ -n "$BUILD_FLAG" ]; then
+  skip "image absent — $BUILD_FLAG will build it"
+else
+  bad "image missing and NOBUILD=1" "run: bun run docker:build:ccr"
+fi
 [ -f "$CFG" ] && ok "host config exists" || { bad "no config at $CFG"; exit 1; }
 bun -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$CFG" 2>/dev/null \
   && ok "host config is valid JSON" || { bad "host config is not valid JSON"; exit 1; }
@@ -178,7 +192,7 @@ head_ "Host config immutability"
 before=$(sha "$CFG")
 
 head_ "Container run"
-SECRET_UNUSED_DECOY=leaked-if-forwarded $CLI --ccr --command 'bash scripts/test-ccr.sh --in-container'
+SECRET_UNUSED_DECOY=leaked-if-forwarded $CLI $BUILD_FLAG --command 'bash scripts/test-ccr.sh --in-container'
 container_rc=$?
 
 after=$(sha "$CFG")
@@ -196,7 +210,7 @@ if [ "$FULL" = "1" ]; then
   for (const prov of cfg.Providers ?? []) prov.models = []
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2))
   ' "$CFG"
-  out=$($CLI --ccr --command 'echo SHELL_REACHED' 2>&1)
+  out=$($CLI --command 'echo SHELL_REACHED' 2>&1)
   case "$out" in
     *"No available models"*|*"at least one model"*) ok "empty models produces the targeted message" ;;
     *) bad "expected a 'no available models' message" "$(printf '%s' "$out" | tail -c 300)" ;;
