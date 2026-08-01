@@ -10,11 +10,15 @@ export interface ProviderSpec {
   dockerfilePath: string
   brewVolumeName: string
   imageCheckCachePath: string
+  dind: boolean
+  /** Dind variants only: the plain provider image the dind layer is built `FROM`. */
+  parentImageName?: string
 }
 
 /** Uniform signature every provider runner exposes so the orchestrator stays provider-agnostic. */
 export type ProviderRunner = (options: {
   runtime: Runtime
+  spec: ProviderSpec
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null

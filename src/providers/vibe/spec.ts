@@ -11,5 +11,6 @@ export const VIBE_PROVIDER_SPEC: ProviderSpec = {
   imageName: VIBE_IMAGE_NAME,
   dockerfilePath: VIBE_DOCKERFILE_PATH,
   brewVolumeName: "secure-vibe-brew",
-  imageCheckCachePath: VIBE_IMAGE_CHECK_PATH
+  imageCheckCachePath: VIBE_IMAGE_CHECK_PATH,
+  dind: false
 }

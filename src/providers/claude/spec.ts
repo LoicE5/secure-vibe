@@ -11,5 +11,6 @@ export const CLAUDE_PROVIDER_SPEC: ProviderSpec = {
   imageName: CLAUDE_IMAGE_NAME,
   dockerfilePath: CLAUDE_DOCKERFILE_PATH,
   brewVolumeName: "secure-vibe-brew",
-  imageCheckCachePath: CLAUDE_IMAGE_CHECK_PATH
+  imageCheckCachePath: CLAUDE_IMAGE_CHECK_PATH,
+  dind: false
 }

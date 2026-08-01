@@ -12,5 +12,6 @@ export const CCR_PROVIDER_SPEC: ProviderSpec = {
   dockerfilePath: CCR_DOCKERFILE_PATH,
   // Shared with Claude/agy: the volume only caches provider-neutral brew tooling.
   brewVolumeName: "secure-vibe-brew",
-  imageCheckCachePath: CCR_IMAGE_CHECK_PATH
+  imageCheckCachePath: CCR_IMAGE_CHECK_PATH,
+  dind: false
 }

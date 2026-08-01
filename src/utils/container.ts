@@ -1,3 +1,5 @@
+import { DIND_LABEL } from "../constants"
+import { resolveDindDataRoot } from "./dind"
 import type { Runtime, ProviderSpec, GitIdentity } from "../types"
 
 /** One extra bind mount: [hostPath, containerPath, optional "ro"|"rw" mode]. */
@@ -22,10 +24,20 @@ export async function spawnContainer(options: SpawnContainerOptions): Promise<nu
 
   const args: string[] = [
     runtime, "run", "--rm", "-it",
-    "--name", `secure-vibe-${spec.id}-${process.pid}`,
+    "--name", `secure-vibe-${spec.id}${spec.dind ? "-dind" : ""}-${process.pid}`,
     "-v", `${workDir}:/home/viber/app`,
     "-v", `${spec.brewVolumeName}:/home/linuxbrew`
   ]
+
+  if(spec.dind) {
+    // --privileged is what rootlesskit needs: the default seccomp profile blocks
+    // clone(CLONE_NEWUSER), the default AppArmor profile denies its mounts, and /dev/net/tun
+    // is absent from a stock container's /dev. The daemon itself still runs as viber.
+    args.push("--privileged", "--label", DIND_LABEL)
+    // A volume, not the container's rootfs: overlayfs refuses an upperdir that is itself on
+    // overlayfs, so an unmounted data root silently degrades to the unusable vfs driver.
+    args.push("-v", await resolveDindDataRoot(runtime))
+  }
 
   for(const [host, container, mode] of extraMounts) {
     args.push("-v", mode ? `${host}:${container}:${mode}` : `${host}:${container}`)

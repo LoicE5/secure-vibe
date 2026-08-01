@@ -1,10 +1,9 @@
 import { access, readFile, mkdir, writeFile } from "fs/promises"
-import type { Runtime, GitIdentity } from "../../types"
+import type { Runtime, GitIdentity, ProviderSpec } from "../../types"
 import { CCR_CONFIG_DIR, CCR_CONFIG_PATH, CCR_CONFIG_SQLITE_PATH } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { loadDotEnv, extractVarTokens } from "../../utils/env-file"
-import { CCR_PROVIDER_SPEC } from "./spec"
 // Bun inlines this at build time, so the bundled CLI has no runtime dependency on the asset.
 import STARTER_CONFIG from "../../assets/ccr-starter-config.json"
 
@@ -68,6 +67,7 @@ function stripCommentKeys(raw: string): string {
 /** Options the orchestrator passes to runCcrContainer. */
 export interface RunCcrContainerOptions {
   runtime: Runtime
+  spec: ProviderSpec
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null
@@ -127,7 +127,7 @@ export async function runCcrContainer(options: RunCcrContainerOptions): Promise<
 
   return spawnContainer({
     runtime: options.runtime,
-    spec: CCR_PROVIDER_SPEC,
+    spec: options.spec,
     workDir: options.workDir,
     gitConfig: options.gitConfig,
     command: options.command,

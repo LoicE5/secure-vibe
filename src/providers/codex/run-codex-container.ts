@@ -1,12 +1,12 @@
-import type { Runtime, GitIdentity } from "../../types"
+import type { Runtime, GitIdentity, ProviderSpec } from "../../types"
 import { CODEX_DIR } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import { resolveCodexCredentials } from "./credentials"
-import { CODEX_PROVIDER_SPEC } from "./spec"
 
 /** Options the orchestrator passes to runCodexContainer. */
 export interface RunCodexContainerOptions {
   runtime: Runtime
+  spec: ProviderSpec
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null
@@ -24,7 +24,7 @@ export async function runCodexContainer(options: RunCodexContainerOptions): Prom
 
   return spawnContainer({
     runtime: options.runtime,
-    spec: CODEX_PROVIDER_SPEC,
+    spec: options.spec,
     workDir: options.workDir,
     gitConfig: options.gitConfig,
     command: options.command,

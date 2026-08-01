@@ -1,14 +1,14 @@
 import { access } from "fs/promises"
-import type { Runtime, GitIdentity } from "../../types"
+import type { Runtime, GitIdentity, ProviderSpec } from "../../types"
 import { GEMINI_DIR } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import type { ExtraMount } from "../../utils/container"
 import { resolveAntigravityCredentials } from "./credentials"
-import { ANTIGRAVITY_PROVIDER_SPEC } from "./spec"
 
 /** Options the orchestrator passes to runAntigravityContainer. */
 export interface RunAntigravityContainerOptions {
   runtime: Runtime
+  spec: ProviderSpec
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null
@@ -29,7 +29,7 @@ export async function runAntigravityContainer(options: RunAntigravityContainerOp
 
   return spawnContainer({
     runtime: options.runtime,
-    spec: ANTIGRAVITY_PROVIDER_SPEC,
+    spec: options.spec,
     workDir: options.workDir,
     gitConfig: options.gitConfig,
     command: options.command,

@@ -1,14 +1,14 @@
 import { access } from "fs/promises"
 import { homedir } from "os"
-import type { Runtime, GitIdentity } from "../../types"
+import type { Runtime, GitIdentity, ProviderSpec } from "../../types"
 import { VIBE_DIR } from "../../constants"
 import { spawnContainer, type ExtraMount } from "../../utils/container"
 import { resolveVibeCredentials } from "./credentials"
-import { VIBE_PROVIDER_SPEC } from "./spec"
 
 /** Options the orchestrator passes to runVibeContainer. */
 export interface RunVibeContainerOptions {
   runtime: Runtime
+  spec: ProviderSpec
   workDir: string
   command: string | null
   gitConfig: GitIdentity | null
@@ -31,7 +31,7 @@ export async function runVibeContainer(options: RunVibeContainerOptions): Promis
 
   return spawnContainer({
     runtime: options.runtime,
-    spec: VIBE_PROVIDER_SPEC,
+    spec: options.spec,
     workDir: options.workDir,
     gitConfig: options.gitConfig,
     command: options.command,
