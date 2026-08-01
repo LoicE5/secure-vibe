@@ -15,7 +15,6 @@
 - Warn at startup when `Router.default`/`background` names a model no provider lists. CCR only catches this at request time as an opaque `400 All target providers failed`, with the useful detail buried in `attempts[]` and collapsed by Claude Code
 - Stop scanning `_comment` keys for `$VAR` references — the scaffolded starter documents `$VAR` forwarding in prose, so every config reported a bogus unresolved variable named `VARs`
 - Default the starter to OpenRouter's free **auto-router** (`openrouter/openrouter/free`) instead of a specific free model: `qwen/qwen3-coder:free` was withdrawn upstream ("This model is unavailable for free"), which surfaces only as a generic model error and is very hard to attribute
-- Add `scripts/test-ccr.sh`, an end-to-end suite covering the whole provider — image contents, runtime env, gateway health, a real round trip and tool call via `claude -p`, least-privilege forwarding, host-config immutability, and validation of provider model ids against OpenRouter's live list. It builds the image under test first and never pulls, so a run always exercises the working tree instead of whatever `:latest` happens to be local
 
 ## 3.8.0
 
