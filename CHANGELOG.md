@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.12.0
 
 - Add `SECURE_VIBE_PROVIDER` for choosing the default provider without a CLI provider flag. Resolution is provider/option flags, exported host environment, the secure-vibe repository `.env`, then built-in defaults; Claude remains the default and invalid provider values fail with the accepted choices
 - Prefix every secure-vibe-owned setting with `SECURE_VIBE_`: `DIRECTORY`, `RUNTIME`, `SAVE`, `COMMAND`, `EXCLUDE`, `BUILD`, `BUILD_NO_CACHE`, `PULL`, `LOCAL`, and `DIND` are now `SECURE_VIBE_DIRECTORY`, `SECURE_VIBE_RUNTIME`, `SECURE_VIBE_SAVE`, `SECURE_VIBE_COMMAND`, `SECURE_VIBE_EXCLUDE`, `SECURE_VIBE_BUILD`, `SECURE_VIBE_BUILD_NO_CACHE`, `SECURE_VIBE_PULL`, `SECURE_VIBE_LOCAL`, and `SECURE_VIBE_DIND`. The old unprefixed controls are no longer read
