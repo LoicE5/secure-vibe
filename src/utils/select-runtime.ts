@@ -32,6 +32,6 @@ export async function selectRuntime(preValue: string | null): Promise<Runtime> {
     console.warn(`  ✗ Invalid runtime "${preValue}". Expected: docker, podman. Defaulting to docker.`)
   }
 
-  console.info("  Both docker and podman available. Using docker (set RUNTIME or --runtime to override).")
+  console.info("  Both docker and podman available. Using docker (set SECURE_VIBE_RUNTIME or --runtime to override).")
   return "docker"
 }

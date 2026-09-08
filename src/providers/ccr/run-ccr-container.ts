@@ -77,7 +77,7 @@ export interface RunCcrContainerOptions {
 
 /** Runs the CCR container, forwarding only the env vars its config references (.env wins). */
 export async function runCcrContainer(options: RunCcrContainerOptions): Promise<number> {
-  const dotEnv = await loadDotEnv(process.cwd())
+  const dotEnv = await loadDotEnv(options.workDir)
 
   if(await ensureHostConfig()) {
     const consumedByCcr = await access(CCR_CONFIG_SQLITE_PATH).then(() => true).catch(() => false)

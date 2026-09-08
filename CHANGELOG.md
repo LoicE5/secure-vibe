@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.12.0
+
+- Add `SECURE_VIBE_PROVIDER` for choosing the default provider without a CLI provider flag. Resolution is provider/option flags, exported host environment, the secure-vibe repository `.env`, then built-in defaults; Claude remains the default and invalid provider values fail with the accepted choices
+- Prefix every secure-vibe-owned setting with `SECURE_VIBE_`: `DIRECTORY`, `RUNTIME`, `SAVE`, `COMMAND`, `EXCLUDE`, `BUILD`, `BUILD_NO_CACHE`, `PULL`, `LOCAL`, and `DIND` are now `SECURE_VIBE_DIRECTORY`, `SECURE_VIBE_RUNTIME`, `SECURE_VIBE_SAVE`, `SECURE_VIBE_COMMAND`, `SECURE_VIBE_EXCLUDE`, `SECURE_VIBE_BUILD`, `SECURE_VIBE_BUILD_NO_CACHE`, `SECURE_VIBE_PULL`, `SECURE_VIBE_LOCAL`, and `SECURE_VIBE_DIND`. The old unprefixed controls are no longer read
+- Install a shell function that disables Bun's caller-directory dotenv loading and supplies the repository `.env` explicitly on every invocation. The file is never shell-sourced, a missing `.env` remains valid, and CCR continues to parse the mounted project's `.env` separately for only the credentials referenced by its config. Existing shell installations must run `bun run setup:alias` once to replace their old generated command
+- Consolidate shell managed-block replacement, remove stale `alias secure-vibe=...` lines during upgrades, and keep function and completion installation safe to repeat while preserving unrelated shell content
+
 ## 3.11.0
 
 - Add opt-in **Docker-in-Docker** via `--dind` (alias `--docker`, env `DIND`). Each provider gains a `:latest-dind` image variant carrying a full Docker install — `docker`, `docker buildx`, `docker compose` — and a new PID 1 that starts the daemon before handing over to the agent. Without it the sandbox is unchanged: no daemon, and a system prompt that says so

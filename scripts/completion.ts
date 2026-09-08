@@ -1,18 +1,19 @@
-import { existsSync, readFileSync, writeFileSync } from "fs"
 import { join } from "path"
 import { DIRS_DIRECTIVE } from "../src/utils/completion"
+import { bunInvocation, writeManagedBlock } from "./shell"
 
 const PROJECT_DIR = join(import.meta.dir, "..")
 const ENTRYPOINT = `${PROJECT_DIR}/src/index.ts`
 const START = "# secure-vibe completion (start)"
 const END = "# secure-vibe completion (end)"
+const BUN_INVOCATION = bunInvocation(PROJECT_DIR, ENTRYPOINT)
 
 function bashBlock(): string {
   return [
     START,
     "_secure_vibe_complete() {",
     '  local cur="${COMP_WORDS[COMP_CWORD]}" out',
-    `  out="$(bun "${ENTRYPOINT}" __complete "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null)"`,
+    `  out="$(${BUN_INVOCATION} __complete "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null)"`,
     `  COMPREPLY=( $(compgen -W "\${out//${DIRS_DIRECTIVE}/}" -- "$cur") )`,
     `  [[ "$out" == *${DIRS_DIRECTIVE}* ]] && COMPREPLY+=( $(compgen -d -- "$cur") )`,
     "}",
@@ -27,7 +28,7 @@ function zshBlock(): string {
     "(( $+functions[compdef] )) || { autoload -Uz compinit && compinit -u 2>/dev/null }",
     "_secure_vibe_complete() {",
     "  local -a out",
-    `  out=( "\${(@f)$(bun "${ENTRYPOINT}" __complete "\${(@)words[2,CURRENT]}" 2>/dev/null)}" )`,
+    `  out=( "\${(@f)$(${BUN_INVOCATION} __complete "\${(@)words[2,CURRENT]}" 2>/dev/null)}" )`,
     `  if (( \${out[(I)${DIRS_DIRECTIVE}]} )); then`,
     `    out=( \${out:#${DIRS_DIRECTIVE}} )`,
     "    (( ${#out} )) && compadd -- $out",
@@ -41,20 +42,9 @@ function zshBlock(): string {
   ].join("\n")
 }
 
-/** Removes any existing marker-guarded block, then appends the fresh one. */
+/** Installs one shell's completion block. */
 function writeBlock(targetFile: string, block: string, rcFile: string): void {
-  let content = existsSync(targetFile) ? readFileSync(targetFile, "utf8") : ""
-
-  const startIdx = content.indexOf(START)
-  if(startIdx !== -1) {
-    const endIdx = content.indexOf(END, startIdx)
-    if(endIdx !== -1) {
-      content = content.slice(0, startIdx) + content.slice(endIdx + END.length)
-    }
-  }
-
-  content = `${content.replace(/\s*$/, "")}\n\n${block}\n`.replace(/^\n+/, "")
-  writeFileSync(targetFile, content)
+  writeManagedBlock(targetFile, START, END, block)
   console.info(`Completion installed in ${targetFile}`)
   console.info(`Run: source ${rcFile}`)
 }
