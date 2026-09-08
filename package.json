@@ -3,6 +3,8 @@
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
     "env:init": "cp -n .env.example .env",
     "build": "bun run scripts/build.ts && bun run cleanup",
     "build:linux-x64": "bun run scripts/build.ts linux-x64 && bun run cleanup",

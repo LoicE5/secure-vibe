@@ -2,6 +2,29 @@ import type { ParsedArgs, ProviderId } from "../types"
 import type { BooleanFlag, ValueFlag } from "../constants"
 import { FLAGS, PROVIDER_FLAGS } from "../constants"
 
+export const PROVIDER_IDS = ["claude", "antigravity", "ccr", "codex", "vibe"] as const satisfies readonly ProviderId[]
+
+type SecureVibeEnvKey = "DIRECTORY" | "RUNTIME" | "SAVE" | "COMMAND" | "EXCLUDE" | "BUILD" | "BUILD_NO_CACHE" | "PULL" | "LOCAL" | "DIND" | "PROVIDER"
+
+export interface ResolvedConfiguration {
+  directory: string | null
+  save: string | null
+  runtime: string | null
+  command: string | null
+  exclude: string | null
+  build: boolean
+  buildNoCache: boolean
+  pull: boolean
+  local: boolean
+  dind: boolean
+  provider: ProviderId
+}
+
+/** Type guard for provider values accepted through configuration. */
+function isProviderId(value: string): value is ProviderId {
+  return PROVIDER_IDS.some(providerId => providerId === value)
+}
+
 /** Parses process.argv per the FLAGS spec: first positional is `directory`, the rest `command`. */
 export function parseArgs(): ParsedArgs {
   const argv = process.argv.slice(2)
@@ -57,14 +80,41 @@ export function parseArgs(): ParsedArgs {
   }
 }
 
-/** Returns the env var value, or null if unset or set to "prompt". */
-export function getEnvConfig(key: string): string | null {
-  const value = process.env[key]
+/** Returns a prefixed env value, or null if unset or set to "prompt". */
+export function getEnvConfig(key: SecureVibeEnvKey, environment: NodeJS.ProcessEnv = process.env): string | null {
+  const value = environment[`SECURE_VIBE_${key}`]
   if(!value || value.toLowerCase() === "prompt") return null
   return value
 }
 
-/** Returns true if the env var is "true", "1", or "yes" (case-insensitive). */
-export function getBoolEnv(key: string): boolean {
-  return ["true", "1", "yes"].includes(process.env[key]?.toLowerCase() ?? "")
+/** Returns true if a prefixed env var is "true", "1", or "yes". */
+export function getBoolEnv(key: SecureVibeEnvKey, environment: NodeJS.ProcessEnv = process.env): boolean {
+  return ["true", "1", "yes"].includes(environment[`SECURE_VIBE_${key}`]?.toLowerCase() ?? "")
+}
+
+/** Resolves and validates the provider from CLI, environment, then the default. */
+export function resolveProviderId(explicitProvider: ProviderId | null, environment: NodeJS.ProcessEnv = process.env): ProviderId {
+  if(explicitProvider) return explicitProvider
+
+  const configuredProvider = getEnvConfig("PROVIDER", environment) ?? "claude"
+  if(isProviderId(configuredProvider)) return configuredProvider
+
+  throw new Error(`Invalid SECURE_VIBE_PROVIDER value "${configuredProvider}". Expected: ${PROVIDER_IDS.join(", ")}.`)
+}
+
+/** Resolves CLI options over prefixed environment configuration. */
+export function resolveConfiguration(args: ParsedArgs, environment: NodeJS.ProcessEnv = process.env): ResolvedConfiguration {
+  return {
+    directory: args.directory ?? getEnvConfig("DIRECTORY", environment),
+    save: args.save ?? getEnvConfig("SAVE", environment),
+    runtime: args.runtime ?? getEnvConfig("RUNTIME", environment),
+    command: args.command ?? getEnvConfig("COMMAND", environment),
+    exclude: args.exclude ?? getEnvConfig("EXCLUDE", environment),
+    build: args.build || getBoolEnv("BUILD", environment),
+    buildNoCache: args.buildNoCache || getBoolEnv("BUILD_NO_CACHE", environment),
+    pull: args.pull || getBoolEnv("PULL", environment),
+    local: args.local || getBoolEnv("LOCAL", environment),
+    dind: args.dind || getBoolEnv("DIND", environment),
+    provider: resolveProviderId(args.provider, environment)
+  }
 }

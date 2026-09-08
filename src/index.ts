@@ -1,4 +1,4 @@
-import { parseArgs, getEnvConfig, getBoolEnv } from "./utils/args"
+import { parseArgs, resolveConfiguration, type ResolvedConfiguration } from "./utils/args"
 import { runCompletion } from "./utils/completion"
 import { selectDirectory } from "./utils/select-directory"
 import { selectSaveOption } from "./utils/select-save"
@@ -18,17 +18,25 @@ if(process.argv.at(2) === "__complete") {
 
 const args = parseArgs()
 
-const dirValue     = args.directory    ?? getEnvConfig("DIRECTORY")
-const saveValue    = args.save         ?? getEnvConfig("SAVE")
-const rtValue      = args.runtime      ?? getEnvConfig("RUNTIME")
-const cmdValue     = args.command      ?? getEnvConfig("COMMAND")
-const excludeValue = args.exclude      ?? getEnvConfig("EXCLUDE")
-const buildFlag    = args.build        || getBoolEnv("BUILD")
-const buildNCFlag  = args.buildNoCache || getBoolEnv("BUILD_NO_CACHE")
-const pullFlag     = args.pull         || getBoolEnv("PULL")
-const localFlag    = args.local        || getBoolEnv("LOCAL")
-const dindFlag     = args.dind         || getBoolEnv("DIND")
-const providerId   = args.provider     ?? "claude"
+let configuration: ResolvedConfiguration
+try {
+  configuration = resolveConfiguration(args)
+} catch(providerError: unknown) {
+  console.error(`✗ ${providerError instanceof Error ? providerError.message : String(providerError)}`)
+  process.exit(1)
+}
+
+const dirValue = configuration.directory
+const saveValue = configuration.save
+const rtValue = configuration.runtime
+const cmdValue = configuration.command
+const excludeValue = configuration.exclude
+const buildFlag = configuration.build
+const buildNCFlag = configuration.buildNoCache
+const pullFlag = configuration.pull
+const localFlag = configuration.local
+const dindFlag = configuration.dind
+const providerId = configuration.provider
 
 if(localFlag && providerId !== "ccr") {
   console.warn(`  ⚠ --local has no effect with the '${providerId}' provider (ccr only); ignoring.`)

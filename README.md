@@ -2,7 +2,7 @@
 
 Run an AI coding agent inside an isolated Docker or Podman container. Your credentials are injected automatically — no manual auth inside the container. Your host system stays untouched. *Bypass permissions* mode becomes reasonable.
 
-Five providers are supported, selected with a flag:
+Five providers are supported, selected with a flag or `SECURE_VIBE_PROVIDER`:
 
 - `--claude` *(default)* — [Claude Code](https://claude.ai/code)
 - `--antigravity` (alias `--agy`) — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
@@ -58,7 +58,7 @@ The container ships with a persistent [Homebrew](https://brew.sh) volume (`secur
 git clone https://github.com/LoicE5/secure-vibe.git
 cd secure-vibe
 bun vibe /path/to/project        # start the agent on your project
-bun run setup:alias              # optional: install the `secure-vibe` alias + tab-completion
+bun run setup:alias              # optional: install the `secure-vibe` function + tab-completion
 ```
 
 Prefer a standalone binary? `bun run build` compiles one per platform into `dist/` (see [Bun scripts](#bun-scripts)).
@@ -144,20 +144,21 @@ Nested images and layers live in a `secure-vibe-docker` volume, so they survive 
 
 ## Environment Variables
 
-secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls back to its default: current directory, `save=no`, and `docker` when both runtimes are available.
+secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls back to its default: Claude, the current directory, `save=no`, and `docker` when both runtimes are available.
 
 | Variable | Description |
 |---|---|
-| `DIRECTORY` | Directory to mount (e.g. `.` or `/path/to/project`) |
-| `RUNTIME` | Container runtime: `docker` or `podman` |
-| `SAVE` | Save mode before starting: `zip`, `copy`, or `no` |
-| `COMMAND` | Command to run inside the container |
-| `BUILD` | Force image rebuild: `true`, `1`, or `yes` |
-| `BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
-| `PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
-| `LOCAL` | (ccr only) Allow the container to reach host-machine models: `true`, `1`, or `yes`. Equivalent to `--local` |
-| `DIND` | Use the docker-in-docker image variant: `true`, `1`, or `yes`. Equivalent to `--dind` |
-| `EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
+| `SECURE_VIBE_PROVIDER` | Default provider: `claude`, `antigravity`, `ccr`, `codex`, or `vibe` |
+| `SECURE_VIBE_DIRECTORY` | Directory to mount (e.g. `.` or `/path/to/project`) |
+| `SECURE_VIBE_RUNTIME` | Container runtime: `docker` or `podman` |
+| `SECURE_VIBE_SAVE` | Save mode before starting: `zip`, `copy`, or `no` |
+| `SECURE_VIBE_COMMAND` | Command to run inside the container |
+| `SECURE_VIBE_BUILD` | Force image rebuild: `true`, `1`, or `yes` |
+| `SECURE_VIBE_BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
+| `SECURE_VIBE_PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
+| `SECURE_VIBE_LOCAL` | (ccr only) Allow the container to reach host-machine models: `true`, `1`, or `yes`. Equivalent to `--local` |
+| `SECURE_VIBE_DIND` | Use the docker-in-docker image variant: `true`, `1`, or `yes`. Equivalent to `--dind` |
+| `SECURE_VIBE_EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
 | `ANTIGRAVITY_API_KEY` | Google AI Studio API key, passed through to the Antigravity provider for non-interactive auth (see [Providers](#providers)) |
 | `MISTRAL_API_KEY` | Mistral API key, used by the Vibe provider when set (takes priority over the OS keyring and `~/.vibe/.env`, see [Providers](#providers)) |
 
@@ -169,7 +170,11 @@ bun run env:init
 
 ## Config resolution
 
-CLI args take priority over environment variables, which take priority over built-in defaults. There are no interactive prompts. When both docker and podman are available and no runtime is specified, docker is used (falling back to podman if docker isn't running); override with `RUNTIME` or `--runtime`.
+Provider and option flags take priority over exported `SECURE_VIBE_*` variables, which take priority over the secure-vibe repository `.env`, followed by built-in defaults. The repository `.env` is read as dotenv data on every invocation of the installed shell function; it is never shell-sourced, so its values cannot execute commands or modify the calling shell. A project `.env` in the caller's current directory cannot configure secure-vibe. Standalone binaries use exported host variables only.
+
+If `secure-vibe` was installed before prefixed configuration was added, run `bun run setup:alias` once from the secure-vibe repository and restart or re-source your shell. The older generated command lets Bun load `.env` from the caller's directory, so its defaults can vary between repositories.
+
+There are no interactive prompts. When both docker and podman are available and no runtime is specified, docker is used (falling back to podman if docker isn't running); override with `SECURE_VIBE_RUNTIME` or `--runtime`. Provider flags override `SECURE_VIBE_PROVIDER`; without either, Claude remains the default. Unprefixed configuration names from releases before this change are no longer read.
 
 ## Providers
 
@@ -281,7 +286,7 @@ CCR 3.x changed its schema. secure-vibe handles the translation **inside the con
 > If you also run CCR 3.x **natively** on your host, note that it imports `~/.claude-code-router/config.json` into `config.sqlite` and then **deletes the JSON**. secure-vibe reads the JSON only, and will tell you when it finds a sqlite store but no config.
 
 ```sh
-# .env  (in the directory you run secure-vibe from)
+# .env  (in the directory mounted into the container)
 OPENROUTER_API_KEY=sk-or-...
 ```
 ```sh
@@ -309,7 +314,7 @@ Because Vibe does not support an append-system-prompt flag, secure-vibe injects 
 |---|---|
 | `bun vibe` / `bun start` | Start the container |
 | `bun run env:init` | Copy `.env.example` to `.env` (no-op if `.env` already exists) |
-| `bun run setup:alias` | Install the `secure-vibe` shell alias **and** tab-completion (see [Shell completion](#shell-completion)) |
+| `bun run setup:alias` | Install the `secure-vibe` shell function **and** tab-completion (see [Shell completion](#shell-completion)) |
 | `bun run setup:completion` | Install tab-completion only |
 | `bun run build` | Compile standalone binaries for all supported platforms into `dist/secure-vibe-<target>` |
 | `bun run build:linux-x64` / `build:linux-arm64` / `build:macos-x64` / `build:macos-arm64` | Compile for a single platform |
@@ -331,7 +336,7 @@ Because Vibe does not support an append-system-prompt flag, secure-vibe injects 
 ## Shell completion
 
 ```sh
-bun run setup:alias        # installs the `secure-vibe` alias + tab-completion
+bun run setup:alias        # installs the `secure-vibe` function + tab-completion
 exec $SHELL                # or: source ~/.bash_aliases / ~/.zsh_aliases (where the stubs are installed)
 ```
 
@@ -345,12 +350,13 @@ secure-vibe --save=<TAB>      # zip  copy  no
 ```
 
 Completion is **dynamic**: the installed shell stub asks the live `secure-vibe` for its
-suggestions on each `<TAB>`, so it **stays current automatically** as the tool gains flags —
-you never need to re-run setup after upgrading. Supports bash and zsh.
+suggestions on each `<TAB>`, so its flag list stays current automatically. Supports bash and
+zsh. If an upgrade changes the generated command itself, its release notes will say to rerun
+`bun run setup:alias`.
 
 ## Excluding files
 
-Use `--exclude` (or the `EXCLUDE` env var) to prevent specific files from being visible inside the container — useful for API keys, `.env` files, or any secrets you don't want Claude to access.
+Use `--exclude` (or the `SECURE_VIBE_EXCLUDE` env var) to prevent specific files from being visible inside the container — useful for API keys, `.env` files, or any secrets you don't want Claude to access.
 
 **How it works:**
 
