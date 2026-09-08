@@ -16,7 +16,7 @@ Why it's safe:
 - Host credentials and config are mounted **read-only** and injected into the container's own copies — nothing is ever written back to the host.
 - The image is hardened Ubuntu **26.04 LTS**: root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published.
 
-**Current version: 3.12.0** — see the [CHANGELOG](CHANGELOG.md).
+**Current version: 3.12.1** — see the [CHANGELOG](CHANGELOG.md).
 
 ## Contents
 
@@ -298,7 +298,7 @@ secure-vibe --ccr --local
 
 ### Codex (`codex`)
 
-Log in once on the host with `codex login`; secure-vibe reads `~/.codex/auth.json`, injects it into the container, and writes it to the container's own `~/.codex/auth.json`. The host `~/.codex` is mounted **read-only** for settings, so token refreshes and Codex state stay inside the container copy.
+Log in once on the host with `codex login`; secure-vibe reads `~/.codex/auth.json`, injects it into the container, and writes it to the container's own `~/.codex/auth.json`. The host `~/.codex` is mounted **read-only** for settings, so token refreshes and Codex state stay inside the container copy. If that host config contains ChatGPT's macOS-only `node_repl` MCP, secure-vibe disables it in the ephemeral Linux copy so Codex does not try to launch a nonexistent `/Applications/ChatGPT.app/...` binary; the host config is unchanged.
 
 Because Codex does not support an append-system-prompt flag, secure-vibe injects the sandbox instructions through the container's global `~/.codex/AGENTS.md`. The workspace is pre-trusted, and the default `codex` wrapper runs with `--dangerously-bypass-approvals-and-sandbox` because the container is the sandbox. Use `codex-default` for normal approval prompts.
 

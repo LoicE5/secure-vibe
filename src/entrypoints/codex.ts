@@ -1,5 +1,6 @@
 import { mkdir, writeFile, readFile, access } from "fs/promises"
 import { $ } from "bun"
+import { disableMacosNodeRepl } from "./codex-config"
 
 const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
 if(!brewReady) {
@@ -47,13 +48,16 @@ const APP_DIR = "/home/viber/app"
 const codexConfigPath = `${CODEX_DIR}/config.toml`
 const trustHeader = `[projects."${APP_DIR}"]`
 const existingConfig = await readFile(codexConfigPath, "utf-8").catch(() => "")
-if(!existingConfig.includes(trustHeader)) {
+let mergedConfig = disableMacosNodeRepl(existingConfig)
+if(!mergedConfig.includes(trustHeader)) {
   const trustBlock = `${trustHeader}\ntrust_level = "trusted"\n`
-  const merged = existingConfig
-    ? `${existingConfig.replace(/\s*$/, "")}\n\n${trustBlock}`
+  mergedConfig = mergedConfig
+    ? `${mergedConfig.replace(/\s*$/, "")}\n\n${trustBlock}`
     : trustBlock
+}
+if(mergedConfig !== existingConfig) {
   await mkdir(CODEX_DIR, { recursive: true })
-  await writeFile(codexConfigPath, merged, { mode: 0o600 })
+  await writeFile(codexConfigPath, mergedConfig, { mode: 0o600 })
 }
 
 // No --append-system-prompt flag, so the prompt goes into the global instructions file.
