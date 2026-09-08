@@ -18,3 +18,4 @@ COPY --chown=viber:viber src/assets/codex-bashrc-append.sh /tmp/bashrc-append.sh
 RUN cat /tmp/bashrc-append.sh >> /home/viber/.bashrc && rm /tmp/bashrc-append.sh
 
 COPY --chown=viber:viber src/entrypoints/codex.ts /home/viber/entrypoint.ts
+COPY --chown=viber:viber src/entrypoints/codex-config.ts /home/viber/codex-config.ts

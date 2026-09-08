@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.1
+
+- Disable ChatGPT's macOS-only `node_repl` MCP in Codex's ephemeral Linux config copy, preventing startup warnings about the nonexistent `/Applications/ChatGPT.app/...` binary without modifying the host config or mounted project
+
 ## 3.12.0
 
 - Add `SECURE_VIBE_PROVIDER` for choosing the default provider without a CLI provider flag. Resolution is provider/option flags, exported host environment, the secure-vibe repository `.env`, then built-in defaults; Claude remains the default and invalid provider values fail with the accepted choices
