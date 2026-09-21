@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.2
+
+- Prevent local Docker builds from leaving hidden `<none>` images in Docker Desktop by loading build output explicitly and disabling BuildKit's inline provenance for base, provider, and Docker-in-Docker images. Podman builds are unchanged, and every completed build now verifies that its requested tag is locally inspectable before reporting success
+
 ## 3.12.1
 
 - Disable ChatGPT's macOS-only `node_repl` MCP in Codex's ephemeral Linux config copy, preventing startup warnings about the nonexistent `/Applications/ChatGPT.app/...` binary without modifying the host config or mounted project

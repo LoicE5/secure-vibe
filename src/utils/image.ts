@@ -4,14 +4,22 @@ import { $ } from "bun"
 import { PROJECT_DIR, BASE_DOCKERFILE_PATH, BASE_IMAGE_NAME, DIND_DOCKERFILE_PATH } from "../constants"
 import type { Runtime, ProviderSpec } from "../types"
 
-/** Runs one `<runtime> build`, exiting the process on failure. */
-async function runBuild(
+type BuildCommandRunner = (command: string[], output: "inherit" | "ignore") => Promise<number>
+
+class ImageBuildError extends Error {
+  constructor(message: string, readonly exitCode = 1) {
+    super(message)
+  }
+}
+
+/** Constructs one local image build command. */
+export function createBuildCommand(
   runtime: Runtime,
   dockerfile: string,
   tag: string,
   noCache: boolean,
   buildArguments: Record<string, string> = {}
-): Promise<void> {
+): string[] {
   const buildArgs = [
     runtime, "build",
     "-f", dockerfile,
@@ -21,17 +29,57 @@ async function runBuild(
     buildArgs.push("--build-arg", `${name}=${value}`)
   }
   if(noCache) buildArgs.push("--no-cache")
+  if(runtime === "docker") buildArgs.push("--load", "--provenance=false")
   buildArgs.push(PROJECT_DIR)
+  return buildArgs
+}
 
-  const buildProcess = Bun.spawn(buildArgs, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+/** Runs a command with either visible or discarded output and returns its exit code. */
+async function runCommand(command: string[], output: "inherit" | "ignore"): Promise<number> {
+  const stdio = output === "inherit" ? "inherit" : "ignore"
+  const childProcess = Bun.spawn(command, { stdin: stdio, stdout: stdio, stderr: stdio })
+  return await childProcess.exited
+}
 
-  const buildExit = await buildProcess.exited
+/** Runs one `<runtime> build` and verifies that its target tag was loaded locally. */
+export async function runBuild(
+  runtime: Runtime,
+  dockerfile: string,
+  tag: string,
+  noCache: boolean,
+  buildArguments: Record<string, string> = {},
+  commandRunner: BuildCommandRunner = runCommand
+): Promise<void> {
+  const buildExit = await commandRunner(
+    createBuildCommand(runtime, dockerfile, tag, noCache, buildArguments),
+    "inherit"
+  )
+
   if(buildExit !== 0) {
-    console.error(`✗ Image build failed (exit ${buildExit}).`)
-    process.exit(buildExit ?? 1)
+    throw new ImageBuildError(`Image build failed (exit ${buildExit}).`, buildExit || 1)
+  }
+
+  const inspectExit = await commandRunner([runtime, "image", "inspect", tag], "ignore")
+  if(inspectExit !== 0) {
+    throw new ImageBuildError(
+      `Image build completed, but target tag "${tag}" is unavailable. ${runtime} did not load and tag the build output.`
+    )
   }
 
   console.info(`  Image "${tag}" built successfully.`)
+}
+
+/** Reports expected build failures without an uncaught-error stack trace. */
+async function buildImageOrExit(runtime: Runtime, spec: ProviderSpec, noCache: boolean): Promise<void> {
+  try {
+    await buildImage(runtime, spec, noCache)
+  } catch(error) {
+    if(error instanceof ImageBuildError) {
+      console.error(`✗ ${error.message}`)
+      process.exit(error.exitCode)
+    }
+    throw error
+  }
 }
 
 /** Builds `spec.imageName` from `spec.dockerfilePath`, building the shared base first. */
@@ -144,7 +192,7 @@ export async function ensureImage(
       process.exit(1)
     }
     console.info(`  ${buildNoCache ? "Rebuilding image (no cache)" : "Rebuilding image"} "${spec.imageName}"…`)
-    await buildImage(runtime, spec, buildNoCache)
+    await buildImageOrExit(runtime, spec, buildNoCache)
     return
   }
 
@@ -178,5 +226,5 @@ export async function ensureImage(
     process.exit(1)
   }
 
-  await buildImage(runtime, spec, false)
+  await buildImageOrExit(runtime, spec, false)
 }
