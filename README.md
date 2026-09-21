@@ -16,8 +16,6 @@ Why it's safe:
 - Host credentials and config are mounted **read-only** and injected into the container's own copies — nothing is ever written back to the host.
 - The image is hardened Ubuntu **26.04 LTS**: root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published.
 
-**Current version: 3.12.1** — see the [CHANGELOG](CHANGELOG.md).
-
 ## Contents
 
 - [Persistent Homebrew volume](#persistent-homebrew-volume)
