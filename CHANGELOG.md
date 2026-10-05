@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.3
+
+- Fix Antigravity multi-architecture image builds when the installer endpoint returns gzip-compressed content by having curl decode the response before piping it to Bash
+
 ## 3.12.2
 
 - Prevent local Docker builds from leaving hidden `<none>` images in Docker Desktop by loading build output explicitly and disabling BuildKit's inline provenance for base, provider, and Docker-in-Docker images. Podman builds are unchanged, and every completed build now verifies that its requested tag is locally inspectable before reporting success
