@@ -1,6 +1,6 @@
 FROM ghcr.io/loice5/secure-vibe/base:latest
 
-RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+RUN curl --compressed -fsSL https://antigravity.google/cli/install.sh | bash
 
 COPY --chown=viber:viber src/assets/antigravity-wrapper.sh /home/viber/bin/agy
 RUN chmod +x /home/viber/bin/agy
