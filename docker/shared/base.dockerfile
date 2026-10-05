@@ -1,3 +1,19 @@
+FROM ghcr.io/homebrew/brew:latest AS homebrew
+
+ENV HOMEBREW_NO_AUTO_UPDATE=1
+
+RUN brew install gcc \
+    && brew install-bundler-gems --groups= \
+    && brew developer off \
+    && rm -rf \
+        /home/linuxbrew/.linuxbrew/Homebrew/Library/Taps/homebrew/homebrew-core \
+        /home/linuxbrew/.linuxbrew/.homebrewdocker \
+        /home/linuxbrew/.cache/Homebrew
+
+RUN mkdir -p /tmp/rootfs/opt/linuxbrew-seed \
+    && cp -a --parents /home/linuxbrew/.linuxbrew /tmp/rootfs \
+    && cp -al /tmp/rootfs/home/linuxbrew/. /tmp/rootfs/opt/linuxbrew-seed/
+
 FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -14,22 +30,12 @@ RUN apt-get update \
 RUN usermod -l viber -d /home/viber -m ubuntu \
     && groupmod -n viber ubuntu
 
-RUN mkdir -p /home/linuxbrew && chown viber:viber /home/linuxbrew
-
-RUN mkdir -p /opt/linuxbrew-seed && chown viber:viber /opt/linuxbrew-seed
-
 RUN passwd -l root && usermod -s /usr/sbin/nologin root
+
+COPY --from=homebrew --chown=viber:viber /tmp/rootfs/ /
 
 USER viber
 WORKDIR /home/viber/app
-
-# One RUN: the cache is only reclaimable here, and hardlinking a lower layer copies it up.
-RUN curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash \
-    && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" \
-    && brew update \
-    && brew install gcc \
-    && rm -rf /home/viber/.cache/Homebrew \
-    && cp -al /home/linuxbrew/. /opt/linuxbrew-seed/
 
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
 

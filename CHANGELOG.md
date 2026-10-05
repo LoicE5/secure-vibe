@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.12.4
+
+- Source Homebrew from its official `ghcr.io/homebrew/brew:latest` image instead of running the installer script, letting Buildx select the native AMD64 or ARM64 image while preserving the weekly latest-Homebrew update behavior
+- Prune the official image's 1.4 GB `homebrew-core` checkout, developer-only gems, Docker marker, and cache before importing the runtime prefix; the live prefix and persistent-volume seed remain hardlinked in one layer, preserving the existing image-size optimization instead of duplicating Homebrew
+
 ## 3.12.3
 
 - Fix Antigravity multi-architecture image builds when the installer endpoint returns gzip-compressed content by having curl decode the response before piping it to Bash
