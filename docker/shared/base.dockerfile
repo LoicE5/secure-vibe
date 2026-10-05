@@ -1,6 +1,8 @@
 FROM ghcr.io/homebrew/brew:latest AS homebrew
 
-RUN HOMEBREW_NO_AUTO_UPDATE=1 brew install gcc \
+ENV HOMEBREW_NO_AUTO_UPDATE=1
+
+RUN brew install gcc \
     && brew install-bundler-gems --groups= \
     && brew developer off \
     && rm -rf \
