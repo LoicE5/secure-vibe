@@ -1,387 +1,62 @@
 # secure-vibe
 
-Run an AI coding agent inside an isolated Docker or Podman container. Your credentials are injected automatically — no manual auth inside the container. Your host system stays untouched. *Bypass permissions* mode becomes reasonable.
-
-Five providers are supported, selected with a flag or `SECURE_VIBE_PROVIDER`:
-
-- `--claude` *(default)* — [Claude Code](https://claude.ai/code)
-- `--antigravity` (alias `--agy`) — Google's [Antigravity CLI](https://antigravity.google) (`agy`), the successor to Gemini CLI (see [Providers](#providers))
-- `--ccr` (alias `--claude-code-router`) — [Claude Code Router](https://github.com/musistudio/claude-code-router): run Claude Code against other models — OpenRouter, GLM, DeepSeek, or a local Ollama/LM Studio (see [Providers](#providers))
-- `--codex` (alias `--gpt`) — OpenAI's [Codex CLI](https://developers.openai.com/codex/cli) (`codex`), run with your ChatGPT account or API key (see [Providers](#providers))
-- `--vibe` (aliases `--lechat`, `--mistral`, `--miaou`) — Mistral's [Vibe CLI](https://github.com/mistralai/mistral-vibe) (`vibe`), run with your Mistral account or API key (see [Providers](#providers))
-
-Why it's safe:
-
-- The agent runs in an isolated container; your host filesystem is untouched apart from the one directory you mount.
-- Host credentials and config are mounted **read-only** and injected into the container's own copies — nothing is ever written back to the host.
-- The image is hardened Ubuntu **26.04 LTS**: root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published.
-
-## Contents
-
-- [Persistent Homebrew volume](#persistent-homebrew-volume)
-- [Requirements](#requirements)
-- [Quickstart](#quickstart)
-- [Run](#run)
-- [CLI Parameters](#cli-parameters)
-- [Images](#images)
-- [Docker-in-Docker](#docker-in-docker)
-- [Environment Variables](#environment-variables)
-- [Config resolution](#config-resolution)
-- [Providers](#providers)
-- [Bun scripts](#bun-scripts)
-- [Shell completion](#shell-completion)
-- [Excluding files](#excluding-files)
-- [Security notes](#security-notes)
-
-## Persistent Homebrew volume
-
-The container ships with a persistent [Homebrew](https://brew.sh) volume (`secure-vibe-brew`), seeded on first run. Packages you install survive container restarts without being rebuilt into the image, so the agent can fetch dependencies on the fly with no sudo access. The volume is **shared by all providers** — it's a provider-neutral tooling cache (the agent CLIs and `bun` are baked into the image as layers; brew handles your *user* packages, rootless), so a Claude run and an Antigravity run use the same stack with no reinstall and no drift.
-
-> **Upgrading from an older image?** The container user is now pinned to a fixed UID (`1000`); older images derived it from your host user. If `brew` reports `Cellar is not writable`, your brew volume was seeded under the old UID — reset it once with `docker volume rm secure-vibe-brew` (it re-seeds automatically on the next run).
-
-## Requirements
-
-- [Bun](https://bun.sh)
-- **Docker** or Podman (running), on a host booted with cgroup v2 (Ubuntu 26.04 containers no longer support cgroup v1; modern Docker / Docker Desktop default to v2, so most setups are unaffected)
-- The provider you intend to use, authenticated on the host:
-  - Claude: Claude Code installed and authenticated
-  - Antigravity: see [Providers](#providers) for auth options
-  - CCR: no host auth needed — just a `~/.claude-code-router/config.json` (scaffolded on first run) and the API key(s) it references, e.g. `OPENROUTER_API_KEY` in your project `.env` (see [Providers](#providers))
-  - Codex: Codex CLI installed and authenticated (`codex login`)
-  - Vibe: signed in once on the host (run `vibe`), or `MISTRAL_API_KEY` set in your shell
-
-## Quickstart
-
-```sh
-git clone https://github.com/LoicE5/secure-vibe.git
-cd secure-vibe
-bun vibe /path/to/project        # start the agent on your project
-bun run setup:alias              # optional: install the `secure-vibe` function + tab-completion
-```
-
-Prefer a standalone binary? `bun run build` compiles one per platform into `dist/` (see [Bun scripts](#bun-scripts)).
-
-## Run
-
-```sh
-bun vibe                        # mount the current directory
-bun vibe /path/to/project       # mount a specific directory
-bun vibe . --save=zip           # zip the directory before starting
-bun vibe . --runtime=podman     # force podman
-bun vibe . --command=bash       # open a shell instead of the agent
-bun vibe . --antigravity        # use Google's Antigravity CLI instead of Claude
-bun vibe . --ccr                # route Claude Code to other models via Claude Code Router
-bun vibe . --codex              # use OpenAI's Codex CLI instead of Claude
-bun vibe . --vibe               # use Mistral's Vibe CLI instead of Claude
-bun vibe . --build              # rebuild the image before starting
-bun vibe . --build-no-cache     # rebuild without cache
-bun vibe . --pull               # force-pull the latest image before starting
-bun vibe . --exclude=.env       # hide .env from the container
-bun vibe . --exclude=".env,.env.*,secrets/**"  # multiple glob patterns
-```
-
-## CLI Parameters
-
-| Parameter | Description |
-|---|---|
-| `[directory]` | Path to mount into the container (positional, defaults to current directory) |
-| `--claude` | Use the Claude Code provider (default) |
-| `--antigravity`, `--agy` | Use the Antigravity CLI (`agy`) provider (see [Providers](#providers)) |
-| `--ccr`, `--claude-code-router` | Use the Claude Code Router (`ccr`) provider — route Claude Code to other models (see [Providers](#providers)) |
-| `--codex`, `--gpt` | Use the OpenAI Codex CLI (`codex`) provider (see [Providers](#providers)) |
-| `--vibe`, `--lechat`, `--mistral`, `--miaou` | Use the Mistral Vibe CLI (`vibe`) provider (see [Providers](#providers)) |
-| `--local` | (ccr only) Allow the container to reach models running on the host machine (adds a host-gateway DNS entry; no ports, no host network) |
-| `--dind`, `--docker` | Run the docker-in-docker image variant, giving the agent its own rootless Docker daemon (see [Docker-in-Docker](#docker-in-docker)) |
-| `--save=zip\|copy\|no` | Save the directory before starting: zip archive, directory copy, or skip |
-| `--runtime=docker\|podman` | Container runtime to use |
-| `--command=<cmd>` | Command to run inside the container (default: the selected provider's agent). Shell metacharacters supported. |
-| `--build` | Rebuild the image before starting |
-| `--build-no-cache` | Rebuild the image from scratch (no layer cache) |
-| `--pull` | Force-pull the latest image before starting |
-| `--exclude=<patterns>` | Comma-separated glob patterns of files to hide from the container (see [Excluding files](#excluding-files)) |
+## What is this project about?
 
-## Images
+secure-vibe runs AI coding agents in disposable Docker or Podman containers. It lets agents install tools and work with permission prompts bypassed, while keeping their environment separate from your host system. Your selected project directory is mounted read-write, so edits land directly in your files.
 
-Each provider has its own image, published to GHCR as `ghcr.io/loice5/secure-vibe/<provider>:latest` (`claude`, `antigravity`, `ccr`, `codex`, `vibe`). With no flags, secure-vibe uses the local image if present (checking the registry for updates at most once a day), pulls it if missing, and falls back to building locally from `docker/<provider>.dockerfile` if the pull fails. Use `--pull` to force-pull, or `--build` / `--build-no-cache` to force a local build.
+It handles container setup, reuses your existing provider login, and keeps installed development tools between sessions. It supports Claude Code, OpenAI Codex, Google Antigravity, Mistral Vibe, and Claude Code Router for alternative models.
 
-All five share a base image, `ghcr.io/loice5/secure-vibe/base:latest`, built from `docker/shared/base.dockerfile`. It holds everything that isn't provider-specific: the hardened Ubuntu layer, the `viber` user, Homebrew + gcc, bun, the brew seed, and the sandbox prompt. Each provider Dockerfile is then just its own CLI install and wrappers on top of it. The weekly publish workflow builds and pushes the base in a job that gates the provider matrix, so the five images are always built against the base from the same run.
+## How to use
 
-Pulling a published provider image is unaffected: the images are self-contained once built, and the base is never fetched at runtime. Local builds don't need the registry either — `--build` builds the base under that same tag first, and Docker resolves `FROM` against local images before reaching for the registry, so the offline fallback above still works end to end.
+1. **Install the prerequisites.**
 
-Every provider also has a docker-in-docker variant, `ghcr.io/loice5/secure-vibe/<provider>:latest-dind`, built from `docker/shared/dind.dockerfile` on top of the plain provider image. It is the same image plus a Docker install, and it is only used when you pass `--dind`.
+   - [Bun](https://bun.sh) and a running Docker or Podman installation.
+   - Log in to your chosen agent on the host first: Claude Code, `codex login`, `agy`, or `vibe`.
+   - For Claude Code Router (`--ccr`), supply `OPENROUTER_API_KEY` in your shell or project's `.env`; a starter config is created on first run. No Anthropic login is needed.
 
-## Docker-in-Docker
+2. **Clone and launch.** Claude Code is the default; add a provider flag to switch.
 
-By default the sandbox has no Docker daemon. `--dind` (or `--docker`) switches to the `-dind` image variant, which carries a full Docker install — `docker`, `docker buildx`, `docker compose` — and starts a **rootless** daemon before handing over to the agent:
+   ```sh
+   git clone https://github.com/LoicE5/secure-vibe.git
+   cd secure-vibe
+   bun vibe /path/to/project
+   ```
 
-```sh
-secure-vibe --claude --dind
-secure-vibe --codex --dind --command "docker compose up -d"
-```
+   > The agent can modify or delete files in the mounted project. Add `--save=zip` or `--save=copy` to back it up before starting; backups are off by default.
 
-This is the one place secure-vibe trades away isolation, deliberately and in a bounded way. Be clear about what changes:
+3. **Optionally install the shell command** and bash/zsh tab completion:
 
-- **The outer container gains `--privileged`.** RootlessKit needs it: Docker's default seccomp profile blocks `clone(CLONE_NEWUSER)`, its default AppArmor profile denies the mounts RootlessKit performs, and `/dev/net/tun` — which the network driver needs — is absent from a stock container's `/dev`.
-- **The agent is still not root.** It runs as `viber` (uid 1000), root is still locked with a `nologin` shell, and there is still no sudo. `--privileged` mostly grants capabilities and device access that a non-root uid cannot reach anyway.
-- **Nested containers cannot reach your machine.** Because the daemon is rootless, root inside a nested container is an unprivileged subuid (100000+). `docker run -v /:/host` inside the sandbox shows you the *sandbox's* filesystem, not yours.
-- **Seccomp and AppArmor are off for the agent process itself**, independently of anything nested. That is the honest cost of the feature.
-- **`--exclude` is not weakened.** Excluded files are physically moved off your machine before the container starts, so nothing running inside — nested or not — can see them.
+   ```sh
+   bun run setup:alias
+   ```
 
-If you would rather not use `--privileged`, the narrow equivalent is `--security-opt seccomp=unconfined --security-opt apparmor=unconfined --device /dev/net/tun`. secure-vibe does not use it by default: `--device` fails the whole `docker run` when the node is missing on the Docker host, and on macOS that host is a VM secure-vibe cannot inspect.
+   Restart your shell, then run `secure-vibe` from any project directory. Keep the cloned repository: the command uses it.
 
-Known limitations, all inherent to rootless nesting:
+4. **Choose the options you need.** These work with both `bun vibe` and `secure-vibe`.
 
-- Nested containers running as root write files into `~/app` owned by uid 100000+ on your machine. Pass `--user "$(id -u):$(id -g)"` when bind-mounting the workspace into one.
-- Cgroups are unavailable, so `--memory`, `--cpus` and similar limits are accepted and then ignored.
-- Ports published by nested containers are reachable from inside the sandbox only.
-- With `--ccr --local --dind`, `host.docker.internal` resolves for the agent but not inside nested containers.
-- Networking goes through a userspace stack, so nested `docker pull` is slower than on the host.
-- Only tested on `docker`; podman is not supported.
+   - **Agent:** `--claude` (default), `--codex`, `--antigravity`, `--vibe`, or `--ccr`.
+   - **Files:** `--save=zip` for a backup; `--exclude=".env,.env.*,secrets/**"` to hide matching files.
+   - **Environment:** `--runtime=podman` to select Podman; `--command=bash` to open a shell.
+   - **Docker:** `--dind` for a nested Docker daemon, Compose, and Buildx (see Notes).
+   - **Images:** `--pull` to refresh; `--build` or `--build-no-cache` to build locally.
 
-Nested images and layers live in a `secure-vibe-docker` volume, so they survive between sessions. Reset it with `bun run prune:docker`. A second `--dind` session started while one is running gets a throwaway data root instead — two daemons sharing one data root would corrupt it.
+   ```sh
+   secure-vibe . --codex --save=zip --exclude=".env,.env.*"
+   secure-vibe /path/to/project --claude --dind
+   ```
 
-## Environment Variables
+For persistent defaults, copy [`.env.example`](.env.example) to `.env` in the secure-vibe repository and set the `SECURE_VIBE_*` variables. Flags override exported variables, then repository defaults. See [`package.json`](package.json) for build and maintenance commands.
 
-secure-vibe never prompts. Any variable left unset (or set to `"prompt"`) falls back to its default: Claude, the current directory, `save=no`, and `docker` when both runtimes are available.
+## Notes
 
-| Variable | Description |
-|---|---|
-| `SECURE_VIBE_PROVIDER` | Default provider: `claude`, `antigravity`, `ccr`, `codex`, or `vibe` |
-| `SECURE_VIBE_DIRECTORY` | Directory to mount (e.g. `.` or `/path/to/project`) |
-| `SECURE_VIBE_RUNTIME` | Container runtime: `docker` or `podman` |
-| `SECURE_VIBE_SAVE` | Save mode before starting: `zip`, `copy`, or `no` |
-| `SECURE_VIBE_COMMAND` | Command to run inside the container |
-| `SECURE_VIBE_BUILD` | Force image rebuild: `true`, `1`, or `yes` |
-| `SECURE_VIBE_BUILD_NO_CACHE` | Force rebuild without cache: `true`, `1`, or `yes` |
-| `SECURE_VIBE_PULL` | Force-pull the latest image: `true`, `1`, or `yes` |
-| `SECURE_VIBE_LOCAL` | (ccr only) Allow the container to reach host-machine models: `true`, `1`, or `yes`. Equivalent to `--local` |
-| `SECURE_VIBE_DIND` | Use the docker-in-docker image variant: `true`, `1`, or `yes`. Equivalent to `--dind` |
-| `SECURE_VIBE_EXCLUDE` | Comma-separated glob patterns of files to hide from the container |
-| `ANTIGRAVITY_API_KEY` | Google AI Studio API key, passed through to the Antigravity provider for non-interactive auth (see [Providers](#providers)) |
-| `MISTRAL_API_KEY` | Mistral API key, used by the Vibe provider when set (takes priority over the OS keyring and `~/.vibe/.env`, see [Providers](#providers)) |
+- **Rootless tooling.** The Ubuntu-based image runs the agent as `viber` (UID 1000), with root login locked and no sudo. Homebrew is copied from its official image and lets the agent install packages as that user. This does not require the host's Docker daemon to be rootless.
 
-Copy `.env.example` to `.env` and set your defaults:
+- **Persistence.** Homebrew packages live in `secure-vibe-brew`, shared by all providers and seeded on first use. Agent CLIs and Bun belong to the image. Containers are removed on exit; project edits and named volumes remain. Provider state lives in disposable container copies.
 
-```sh
-bun run env:init
-```
+- **Credentials and config.** Host provider settings are mounted read-only and copied into the container; credentials are injected into its own environment or files. Session changes are not written back to host settings. The agent still has access to the credentials it needs and to outbound networking.
 
-## Config resolution
+- **Docker-in-Docker.** `--dind` starts a separate rootless Docker daemon using RootlessKit and subordinate UID/GID mappings, without mounting the host Docker socket. Images persist in `secure-vibe-docker`; simultaneous sessions use a temporary data root when it is busy. The outer container runs with **`--privileged`**, disabling its usual seccomp/AppArmor confinement: isolation is weaker even though the agent stays non-root. This mode is only tested with Docker, and nested published ports are reachable only inside the sandbox.
 
-Provider and option flags take priority over exported `SECURE_VIBE_*` variables, which take priority over the secure-vibe repository `.env`, followed by built-in defaults. The repository `.env` is read as dotenv data on every invocation of the installed shell function; it is never shell-sourced, so its values cannot execute commands or modify the calling shell. A project `.env` in the caller's current directory cannot configure secure-vibe. Standalone binaries use exported host variables only.
+- **Excluded files.** `--exclude` temporarily moves matches into a sibling `<project>-<timestamp>-secrets/` directory and restores them after the session. Tracked files appear deleted while excluded. The sibling folder and recovery manifest remain afterward.
 
-If `secure-vibe` was installed before prefixed configuration was added, run `bun run setup:alias` once from the secure-vibe repository and restart or re-source your shell. The older generated command lets Bun load `.env` from the caller's directory, so its defaults can vary between repositories.
-
-There are no interactive prompts. When both docker and podman are available and no runtime is specified, docker is used (falling back to podman if docker isn't running); override with `SECURE_VIBE_RUNTIME` or `--runtime`. Provider flags override `SECURE_VIBE_PROVIDER`; without either, Claude remains the default. Unprefixed configuration names from releases before this change are no longer read.
-
-## Providers
-
-Pick a provider with `--claude` (default), `--antigravity` (alias `--agy`), `--ccr` (alias `--claude-code-router`), `--codex` (alias `--gpt`), or `--vibe` (aliases `--lechat`, `--mistral`, `--miaou`). Each has its own image and credential handling; the [brew volume](#persistent-homebrew-volume) is shared. In every case the host config is mounted **read-only** and nothing is written back to the host.
-
-### Claude (default)
-
-Credentials are resolved automatically in this order:
-
-1. `~/.claude.json` (Claude Code 2.1.63+)
-2. macOS Keychain entry `Claude Code-credentials` (macOS only)
-3. `~/.claude/.credentials.json` (legacy fallback)
-
-The host `~/.claude` directory is mounted **read-only**. Credentials are injected into the container via an environment variable and written to the container's own `~/.claude` — nothing is ever written back to the host.
-
-### Antigravity (`agy`)
-
-Log in once on the host (`agy`, complete Google sign-in) — secure-vibe handles the rest, same as Claude. `agy` keeps its OAuth token in the OS keyring; inside a container it detects `/.dockerenv` and reads the token from a file instead. secure-vibe reads your host token, decodes it, and writes it to the container's token file, so `agy` starts already logged in. Resolution order:
-
-1. **`ANTIGRAVITY_API_KEY`** env var (a Google AI Studio key) — non-interactive alternative.
-2. **OS keyring** (go-keyring service `gemini`, account `antigravity`):
-   - **macOS** — Keychain via `security`.
-   - **Linux desktop** — Secret Service (gnome-keyring/KWallet) via `secret-tool` (needs `libsecret-tools` on the host).
-3. **Token file** `~/.gemini/antigravity-cli/antigravity-oauth-token` — used by **headless Linux** (where `agy` itself falls back to file storage) or a manual drop-in.
-
-The token is injected via env and written to the container's `~/.gemini/antigravity-cli/antigravity-oauth-token` (go-keyring base64-decoded to the raw JSON `agy` expects); `~/.gemini` is mounted **read-only** for settings. Nothing is written back to the host.
-
-Antigravity has no `--append-system-prompt` flag, so the sandbox system prompt is injected via the container's global `~/.gemini/GEMINI.md` context file (in a marker-guarded block). Permissions are bypassed with `agy --dangerously-skip-permissions`; the container itself is the sandbox.
-
-### Claude Code Router (`ccr`)
-
-[Claude Code Router](https://github.com/musistudio/claude-code-router) (CCR, MIT) runs Claude Code against alternative models — GLM, OpenRouter, DeepSeek, Gemini, or a local Ollama/LM Studio. CCR runs a small HTTP server **inside** the container on `127.0.0.1:3456`, points Claude Code at it (`ANTHROPIC_BASE_URL`), and routes each request to the model your config names. Because the server and Claude Code share the one container, cloud routing needs **no published ports and no host-network mode** — ordinary outbound bridge networking is enough.
-
-- **Config — mount or scaffold.** Your host `~/.claude-code-router` is mounted **read-only** and mirrored into a writable copy inside the container. If you have no config yet, secure-vibe writes a starter `config.json` on the host (see the [examples below](#example-claude-code-routerconfigjson)) — it defaults to a free, tool-calling OpenRouter model, so it runs with just `OPENROUTER_API_KEY` in your project `.env`. Edit it and re-run. `HOST` is always pinned to `127.0.0.1` in the container so the router is never bound wide (and the container publishes no ports regardless).
-- **API keys — referenced-only forwarding.** CCR resolves keys via `$VAR`/`${VAR}` references in `config.json`; it does not read `.env` itself. secure-vibe parses your config, and forwards **only the variables it actually references**, resolving each from your project `.env` first, then your shell env (`.env` wins). A variable your config doesn't reference is never forwarded — least privilege by default. Unresolved references are warned about (CCR substitutes empty).
-- **Host-machine models — `--local`.** To reach a model running on your host (e.g. `ollama serve` on `11434`), add `--local`. It adds only `--add-host=host.docker.internal:host-gateway` (a DNS entry to the host gateway) — **not** host networking, and **no** inbound ports. Your config then uses `http://host.docker.internal:11434`.
-- **Every command routes through CCR.** A direct-to-Anthropic `claude` would defeat the point of this container, so all three entry points are pinned to CCR's local gateway via `ANTHROPIC_BASE_URL`; they differ only in permission posture:
-
-  | Command | Routes via | Permissions | Sandbox prompt |
-  |---|---|---|---|
-  | `claude` | CCR gateway | `--dangerously-skip-permissions` | yes |
-  | `ccr` | CCR gateway | `--dangerously-skip-permissions` | yes |
-  | `claude-default` | CCR gateway | normal prompts (no bypass) | yes |
-
-  Each wrapper calls the real `claude` binary by absolute path (no recursion) with the endpoint and token pinned, so a stale or overridden `ANTHROPIC_BASE_URL` can't send traffic to Anthropic. Use `claude` or `ccr` for the usual bypass workflow; use `claude-default` when you want to review each action. The container itself is the sandbox. `ccr-default` is the escape hatch to CCR's own CLI (`ccr-default stop|serve|ui`).
-- **No Anthropic account needed.** Claude Code's first-run flags (onboarding, folder-trust, bypass) are pre-accepted, and secure-vibe gives CCR a dummy `APIKEY` (only when your config sets none) that it also hands Claude Code as its auth token — so Claude considers itself authenticated and launches straight into a session with no login or wizard. secure-vibe deliberately does **not** inject your Claude.ai subscription here: a real OAuth token can make Claude Code talk to Anthropic directly and bypass CCR's routing.
-- **Gateway lifecycle.** The entrypoint starts `ccr serve` as a sidecar and waits for its health check before handing you the shell; its output goes to `~/.ccr-serve.log` inside the container rather than the terminal. If it fails to start (most often: no provider lists any model, which CCR 3.x refuses to run with) you still get a shell and a pointer to the log. CCR 3.x also binds its own management server on loopback `127.0.0.1:3458`; no ports are published either way.
-
-> **Note:** Routing Claude Code to non-Anthropic models is a grey area under Anthropic's Claude Code terms. That's a choice you make as the operator (identical to running CCR on your own machine); it isn't something the secure-vibe project does on your behalf.
-
-#### Selecting a model
-
-A model is named `Provider/model_id` (the `Provider` is a `Providers[].name`; the `model_id` is one of that provider's `models`). Two ways to pick one:
-
-- **In the config** — set `Router.default` (the main session model) and `Router.background` (Claude Code's lightweight calls: titles, summaries, file suggestions). secure-vibe maps them onto `ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL`. Setting `background` matters: without it, background calls ask for a model no provider serves and fail mid-session.
-- **At runtime** — switch the active model any time from inside Claude Code with `/model openrouter/qwen/qwen3-coder` (or any `Provider/model_id` your config defines). Because the default is set as an env default rather than a routing rule, `/model` genuinely overrides it.
-
-The scaffolded starter defaults to **`openrouter/openrouter/free`** — OpenRouter's auto-router over free tool-capable models, which runs with just an `OPENROUTER_API_KEY`. (The doubled name is not a typo: the selector is `ProviderName/model_id`, and the model id here is itself `openrouter/free`.) The paid `qwen/qwen3-coder` is also listed to switch to.
-
-> **Free-model caveats.** Free tiers are rate-limited and noticeably rougher at Claude Code's tool-heavy, long-context workflows than frontier models — fine for trying things out, weak for real agentic work. Individual `:free` models are also **retired without notice** — `qwen/qwen3-coder:free`, which this starter once defaulted to, no longer exists — which is why the default is the auto-router rather than a specific free model. A retired or misspelled model surfaces inside Claude Code as *"There's an issue with the selected model … it may not exist or you may not have access to it"*; check the current list at [openrouter.ai/models](https://openrouter.ai/models). Some free endpoints have hard constraints too: `openai/gpt-oss-120b:free`, for example, **mandates reasoning** and returns `400 "Reasoning is mandatory for this endpoint and cannot be disabled"`. For serious work, point `Router.default` at a paid frontier model.
-
-#### Example `~/.claude-code-router/config.json`
-
-A single config can mix providers. This one has both a **cloud provider** (OpenRouter) and a **host-machine model** (MLX/Ollama/LM Studio/llama.cpp — any OpenAI-compatible local server). `Router.default` sets the main session model and `Router.background` Claude Code's lightweight background calls; switch the active model any time from inside Claude Code with `/model openrouter/anthropic/claude-sonnet-4` or `/model mlx/mlx-community/Qwen2.5-7B-Instruct-4bit`.
-
-```json
-{
-  "HOST": "127.0.0.1",
-  "PORT": 3456,
-  "Providers": [
-    {
-      "name": "openrouter",
-      "api_base_url": "https://openrouter.ai/api/v1",
-      "api_key": "$OPENROUTER_API_KEY",
-      "models": ["anthropic/claude-sonnet-4", "google/gemini-2.5-pro-preview"]
-    },
-    {
-      "name": "mlx",
-      "api_base_url": "http://host.docker.internal:8080/v1",
-      "api_key": "not-needed",
-      "models": ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
-    }
-  ],
-  "Router": {
-    "default": "openrouter/anthropic/claude-sonnet-4",
-    "background": "mlx/mlx-community/Qwen2.5-7B-Instruct-4bit"
-  }
-}
-```
-
-Notes on the two providers:
-
-- **OpenRouter (cloud):** reference the key as `$OPENROUTER_API_KEY` and set it in your project `.env` — secure-vibe forwards only that referenced variable into the container.
-- **MLX (host):** any OpenAI-compatible local server. Reach the host via `host.docker.internal` (the example assumes `mlx_lm.server --model mlx-community/Qwen2.5-7B-Instruct-4bit` on port 8080).
-
-#### Upgrading a CCR 2.x config
-
-CCR 3.x changed its schema. secure-vibe handles the translation **inside the container** and never modifies your host file, but it's worth updating the host config when convenient:
-
-| CCR 2.x | CCR 3.x |
-|---|---|
-| `"provider,model"` | `"Provider/model"` (slash) |
-| `api_base_url` ending in `/chat/completions` | the base URL (`…/v1`) |
-| `"transformer": { "use": [...] }` | removed — the protocol is sniffed |
-| `Router.think` / `longContext` / `webSearch` | **no equivalent**, ignored |
-
-`Router.default` and `Router.background` are ignored by CCR 3.x itself; secure-vibe reads them and maps them onto Claude Code's `ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, so they keep working and `/model` still overrides them at runtime. secure-vibe warns at startup when it sees a 2.x-shaped config and names exactly what it dropped.
-
-> If you also run CCR 3.x **natively** on your host, note that it imports `~/.claude-code-router/config.json` into `config.sqlite` and then **deletes the JSON**. secure-vibe reads the JSON only, and will tell you when it finds a sqlite store but no config.
-
-```sh
-# .env  (in the directory mounted into the container)
-OPENROUTER_API_KEY=sk-or-...
-```
-```sh
-# --local is required so the container can reach the host MLX server
-secure-vibe --ccr --local
-```
-
-> If you get *connection refused* reaching a host server bound to `127.0.0.1`, restart it on all interfaces (e.g. `mlx_lm.server --host 0.0.0.0 …`, `OLLAMA_HOST=0.0.0.0 ollama serve`). Small local models (7B/quantized) work for trying things out but are much weaker at Claude Code's tool-heavy, long-context workflows than frontier models. If you only use the cloud provider, drop the `mlx` block and the `background` route and run without `--local`.
-
-### Codex (`codex`)
-
-Log in once on the host with `codex login`; secure-vibe reads `~/.codex/auth.json`, injects it into the container, and writes it to the container's own `~/.codex/auth.json`. The host `~/.codex` is mounted **read-only** for settings, so token refreshes and Codex state stay inside the container copy. If that host config contains ChatGPT's macOS-only `node_repl` MCP, secure-vibe disables it in the ephemeral Linux copy so Codex does not try to launch a nonexistent `/Applications/ChatGPT.app/...` binary; the host config is unchanged.
-
-Because Codex does not support an append-system-prompt flag, secure-vibe injects the sandbox instructions through the container's global `~/.codex/AGENTS.md`. The workspace is pre-trusted, and the default `codex` wrapper runs with `--dangerously-bypass-approvals-and-sandbox` because the container is the sandbox. Use `codex-default` for normal approval prompts.
-
-### Mistral Vibe (`vibe`)
-
-Sign in once on the host (run `vibe` — its wizard stores the key in the OS keyring, or `~/.vibe/.env` as a fallback). secure-vibe resolves the key in vibe's own order — `MISTRAL_API_KEY` env var → OS keyring (macOS Keychain / Linux Secret Service, the latter needs `libsecret-tools` on the host) → `~/.vibe/.env` — and injects it into the container as `MISTRAL_API_KEY`, which vibe reads directly. The host `~/.vibe` is mounted **read-only** for settings, so logs, sessions, and Vibe state stay inside the container copy.
-
-Because Vibe does not support an append-system-prompt flag, secure-vibe injects the sandbox instructions through the container's user-level `~/.vibe/AGENTS.md`. The workspace is pre-trusted (`trusted_folders.toml`), and the default `vibe` wrapper runs with `--yolo` because the container is the sandbox. Use `vibe-default` for normal tool-approval prompts.
-
-## Bun scripts
-
-| Script | Description |
-|---|---|
-| `bun vibe` / `bun start` | Start the container |
-| `bun run env:init` | Copy `.env.example` to `.env` (no-op if `.env` already exists) |
-| `bun run setup:alias` | Install the `secure-vibe` shell function **and** tab-completion (see [Shell completion](#shell-completion)) |
-| `bun run setup:completion` | Install tab-completion only |
-| `bun run build` | Compile standalone binaries for all supported platforms into `dist/secure-vibe-<target>` |
-| `bun run build:linux-x64` / `build:linux-arm64` / `build:macos-x64` / `build:macos-arm64` | Compile for a single platform |
-| `bun run prune:brew` | Delete the shared persistent Homebrew volume (all providers) |
-| `bun run prune:docker` | Delete the shared nested-Docker volume used by `--dind` |
-| `bun run prune:image:claude` | Remove the built Docker image for the Claude provider |
-| `bun run prune:image:antigravity` | Remove the built Docker image for the Antigravity provider |
-| `bun run prune:image:ccr` | Remove the built Docker image for the CCR provider |
-| `bun run prune:image:codex` | Remove the built Docker image for the Codex provider |
-| `bun run prune:image:vibe` | Remove the built Docker image for the Vibe provider |
-| `bun run prune:image:base` | Remove the locally built shared base image |
-| `bun run docker:build:claude` / `docker:build:antigravity` / `docker:build:ccr` / `docker:build:codex` / `docker:build:vibe` | Build a provider image locally, rebuilding the shared base first (append `:no-cache` to any of them to skip the layer cache) |
-| `bun run docker:build:base` | Build only the shared base image |
-| `bun run docker:pull:claude` / `docker:pull:antigravity` / `docker:pull:ccr` / `docker:pull:codex` / `docker:pull:vibe` / `docker:pull:base` | Pull an image from GHCR |
-| `bun run docker:build:claude:dind` / `…:antigravity:dind` / `…:ccr:dind` / `…:codex:dind` / `…:vibe:dind` | Build a provider's docker-in-docker variant locally, building the plain image first |
-| `bun run docker:pull:claude:dind` / `…:antigravity:dind` / `…:ccr:dind` / `…:codex:dind` / `…:vibe:dind` | Pull a docker-in-docker variant from GHCR |
-| `bun run prune:image:claude:dind` / `…:antigravity:dind` / `…:ccr:dind` / `…:codex:dind` / `…:vibe:dind` | Remove a locally built docker-in-docker variant |
-
-## Shell completion
-
-```sh
-bun run setup:alias        # installs the `secure-vibe` function + tab-completion
-exec $SHELL                # or: source ~/.bash_aliases / ~/.zsh_aliases (where the stubs are installed)
-```
-
-After setup, press `<TAB>` to complete flags, their values, and the directory:
-
-```sh
-secure-vibe <TAB>             # flags + directory names
-secure-vibe --<TAB>           # --save --runtime --command --exclude --build …
-secure-vibe --runtime <TAB>   # docker  podman
-secure-vibe --save=<TAB>      # zip  copy  no
-```
-
-Completion is **dynamic**: the installed shell stub asks the live `secure-vibe` for its
-suggestions on each `<TAB>`, so its flag list stays current automatically. Supports bash and
-zsh. If an upgrade changes the generated command itself, its release notes will say to rerun
-`bun run setup:alias`.
-
-## Excluding files
-
-Use `--exclude` (or the `SECURE_VIBE_EXCLUDE` env var) to prevent specific files from being visible inside the container — useful for API keys, `.env` files, or any secrets you don't want Claude to access.
-
-**How it works:**
-
-1. Patterns are resolved as globs against the mounted directory (dotfiles included).
-2. Before the container starts, all matching files are **moved** out of the project directory into a sibling folder named `<project>-<timestamp>-secrets/`. A `manifest.json` is written there to track original paths.
-3. The container runs with those files absent from the filesystem — they cannot be read, logged, or leaked.
-4. After the container exits (regardless of exit code), every file is **moved back** to its original location.
-
-The move-out step happens after image build, so a pre-flight failure never leaves files displaced.
-
-> Note: The sibling directory isn't automatically deleted after the run. You can delete it manually after ensuring all files are properly back.
-
-**Pattern syntax** — standard globs, comma-separated:
-
-```sh
---exclude=".env"                        # exact filename (anywhere in tree)
---exclude=".env,.env.*"                 # multiple patterns
---exclude="secrets/**,**/*.pem"         # directories and wildcards
---exclude="secrets"                     # a bare name that is a directory excludes it whole
-```
-
-If an excluded file is **not** gitignored, a warning is printed — the move is visible to git, so anything tracked will show up as deleted in `git status` for the duration of the run.
-
-## Security notes
-
-- **Blocked mounts.** System paths cannot be used as the working directory: `~`, `/`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/var`, `/tmp`, `/proc`, `/sys`, `/dev`, and `/boot` are all rejected.
-- **Read-only host config.** Provider config directories (`~/.claude`, `~/.gemini`, `~/.claude-code-router`, `~/.codex`, `~/.vibe`) are mounted read-only; credentials are injected into the container's own copies and nothing is written back to the host.
-- **Hardened image.** Root is locked, the container user is a fixed non-root UID (`1000`), and no ports are published. The agent CLIs and `bun` are image layers; user packages are installed rootless via brew.
-- **`--dind` relaxes this on purpose.** It adds `--privileged` to the container and runs it without seccomp or AppArmor confinement. The agent stays non-root and nested containers stay confined to an unprivileged subuid range, but the default image is the stronger posture — see [Docker-in-Docker](#docker-in-docker) for the full trade-off.
-- **Git identity.** Your host `user.name` / `user.email` are forwarded into the container (via `GIT_USER_NAME` / `GIT_USER_EMAIL`) so commits made inside are attributed to you; if none is configured, it falls back to `Claude <noreply@anthropic.com>`.
+- **Alternative models.** `--ccr` runs Claude Code Router inside the container using `~/.claude-code-router/config.json`. Only environment variables referenced by that config are forwarded, with the project's `.env` taking priority. Add `--local` and use `http://host.docker.internal:<port>` to reach a model server on your host; it must listen on an address reachable from the container.
