@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.12.5
+
+- Copy Bun and pnpm directly from their official images, removing installer scripts, release downloads, and architecture mapping while preserving the existing binary and global-package paths
+- Store Homebrew only in the persistent-volume seed and populate its writable runtime directory at provider startup; existing volumes retain their packages, and Homebrew is no longer available during provider image builds. Preserve `HOMEBREW_NO_AUTO_UPDATE=1` in the runtime image
+- Set executable wrapper permissions during `COPY`, remove the unused `unzip` dependency, and exclude Git metadata, dependencies, build output, environment files, and local `personal`/`temp` directories from the Docker build context while retaining `.env.example`
+- Exercise CCR's native SQLite binding by opening, querying, and closing an in-memory database without creating configuration state in the image
+
 ## 3.12.4
 
 - Source Homebrew from its official `ghcr.io/homebrew/brew:latest` image instead of running the installer script, letting Buildx select the native AMD64 or ARM64 image while preserving the weekly latest-Homebrew update behavior

@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+build
+coverage
+.*-*.bun-build
+.env
+.env.*
+!.env.example
+personal
+temp
