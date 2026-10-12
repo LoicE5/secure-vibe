@@ -1,6 +1,6 @@
 import { access, readFile } from "fs/promises"
 import { $ } from "bun"
-import { prepareOpenCodeFiles, remapOpenCodeConfig, type OpenCodeSetup } from "./opencode-config"
+import { OPENCODE_INLINE_VARIABLES, prepareOpenCodeFiles, remapOpenCodeConfig, type OpenCodeSetup } from "./opencode-config"
 
 const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
 if(!brewReady) {
@@ -27,8 +27,9 @@ const setup: OpenCodeSetup = process.env.SECURE_VIBE_OPENCODE_SETUP
 delete process.env.SECURE_VIBE_OPENCODE_SETUP
 const prompt = await readFile("/home/viber/.secure-vibe-sandbox.md", "utf-8")
 await prepareOpenCodeFiles(setup, prompt)
-if(process.env.OPENCODE_CONFIG_CONTENT) {
-  process.env.OPENCODE_CONFIG_CONTENT = remapOpenCodeConfig(process.env.OPENCODE_CONFIG_CONTENT, setup)
+for(const name of OPENCODE_INLINE_VARIABLES) {
+  const value = process.env[name]
+  if(value) process.env[name] = remapOpenCodeConfig(value, setup, name === "OPENCODE_PERMISSION")
 }
 process.env.OPENCODE_DISABLE_AUTOUPDATE = "1"
 

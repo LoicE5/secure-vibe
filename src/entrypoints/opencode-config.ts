@@ -1,7 +1,8 @@
 import { chmod, copyFile, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "fs/promises"
 import { isAbsolute, join, relative, resolve, sep } from "path"
+import { fileURLToPath, pathToFileURL } from "url"
 import { Database } from "bun:sqlite"
-import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import { applyEdits, parse, visit, type Edit, type JSONPath, type ParseError } from "jsonc-parser"
 
 export interface OpenCodePathMapping {
   host: string
@@ -24,6 +25,7 @@ export interface OpenCodeSetup {
 const SKIPPED_ENTRIES = new Set(["log", "logs", "cache", ".cache", "locks", "node_modules", "bin", ".git"])
 const SESSION_DATABASE_PATTERN = /(?:^|\/)opencode(?:-[\w.-]+)?\.db$/
 export const OPENCODE_CONFIG_NAMES = ["config.json", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"]
+export const OPENCODE_INLINE_VARIABLES = ["OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION"]
 
 /** Checks path containment without matching sibling prefixes. */
 export function isWithinDirectory(path: string, directory: string): boolean {
@@ -33,12 +35,30 @@ export function isWithinDirectory(path: string, directory: string): boolean {
 
 /** Translates only paths covered by provider copies or the selected project. */
 export function translateOpenCodePath(value: string, mappings: OpenCodePathMapping[], hostHome: string): string {
-  const prefix = value.startsWith("file://") ? "file://" : ""
-  const path = value.slice(prefix.length).replace(/^~(?=\/)/, hostHome)
+  if(value.includes("{file:")) {
+    return value.replace(/\{file:([^}]+)\}/g, (reference: string, path: string) => `{file:${translateOpenCodePath(path, mappings, hostHome)}}`)
+  }
+  let fileUrl: URL | undefined
+  let path = value.replace(/^~(?=\/)/, hostHome)
+  if(value.startsWith("file://")) {
+    try {
+      fileUrl = new URL(value)
+      path = fileURLToPath(fileUrl)
+    } catch(urlError: unknown) {
+      console.warn("  Could not translate an invalid OpenCode file URL.")
+      return value
+    }
+  }
   if(!isAbsolute(path)) return value
   const mapping = [...mappings].sort((left: OpenCodePathMapping, right: OpenCodePathMapping) => right.host.length - left.host.length)
     .find(candidate => isWithinDirectory(path, candidate.host))
-  return mapping ? prefix + join(mapping.container, relative(mapping.host, path)) : value
+  if(!mapping) return value
+  const translated = join(mapping.container, relative(mapping.host, path))
+  if(!fileUrl) return translated
+  const translatedUrl = pathToFileURL(translated)
+  translatedUrl.search = fileUrl.search
+  translatedUrl.hash = fileUrl.hash
+  return translatedUrl.href
 }
 
 /** Parses JSONC without interpreting comments as environment references. */
@@ -50,22 +70,23 @@ export function parseOpenCodeConfig(raw: string): unknown {
 }
 
 /** Edits string values in JSONC while retaining comments and unrelated settings. */
-export function remapOpenCodeConfig(raw: string, setup: Pick<OpenCodeSetup, "mappings" | "hostHome">): string {
-  const config = parseOpenCodeConfig(raw)
-  let result = raw
-  /** Visits configuration values by their JSON path. */
-  function visit(value: unknown, path: (string | number)[]): void {
-    if(typeof value === "string") {
-      const translated = translateOpenCodePath(value, setup.mappings, setup.hostHome)
-      if(translated !== value) result = applyEdits(result, modify(result, path, translated, {}))
-    } else if(Array.isArray(value)) {
-      value.forEach((entry: unknown, index: number) => visit(entry, [...path, index]))
-    } else if(value && typeof value === "object") {
-      for(const [key, entry] of Object.entries(value)) visit(entry, [...path, key])
-    }
+export function remapOpenCodeConfig(raw: string, setup: Pick<OpenCodeSetup, "mappings" | "hostHome">, permissionRules: boolean = false): string {
+  parseOpenCodeConfig(raw)
+  const edits: Edit[] = []
+  /** Queues a replacement for one translated JSON string token. */
+  function remapString(value: string, offset: number, length: number): void {
+    const translated = translateOpenCodePath(value, setup.mappings, setup.hostHome)
+    if(translated !== value) edits.push({ offset, length, content: JSON.stringify(translated) })
   }
-  visit(config, [])
-  return result
+  visit(raw, {
+    onLiteralValue: (value: unknown, offset: number, length: number) => {
+      if(typeof value === "string") remapString(value, offset, length)
+    },
+    onObjectProperty: (name: string, offset: number, length: number, line: number, column: number, path: () => JSONPath) => {
+      if(permissionRules || path().includes("permission")) remapString(name, offset, length)
+    }
+  }, { allowTrailingComma: true })
+  return applyEdits(raw, edits)
 }
 
 /** Snapshots committed SQLite state without copying its live WAL and shared-memory files. */

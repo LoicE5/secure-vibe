@@ -4,7 +4,7 @@ import { tmpdir } from "os"
 import { join } from "path"
 import { resolveOpenCodeConfiguration, resolveOpenCodeDirectories } from "./config"
 import { referencedOpenCodeVariables, resolveOpenCodeEnvironment } from "./credentials"
-import { injectOpenCodeSandbox, prepareOpenCodeFiles, remapOpenCodeConfig, type OpenCodeSetup } from "../../entrypoints/opencode-config"
+import { injectOpenCodeSandbox, parseOpenCodeConfig, prepareOpenCodeFiles, remapOpenCodeConfig, type OpenCodeSetup } from "../../entrypoints/opencode-config"
 import { loadDotEnv } from "../../utils/env-file"
 import { Database } from "bun:sqlite"
 
@@ -197,7 +197,7 @@ describe("OpenCode configuration and credentials", () => {
     const project = join(home, "project")
     const configuration = await resolveOpenCodeConfiguration(project, {}, home)
     configuration.setup.mappings.push({ host: "/home/viber/app", container: "/home/viber/.config/opencode-custom" })
-    const inline = `// Keep inline comments.\n{"instructions":["${project}/rules.md"],"permission":{"bash":"deny"}}`
+    const inline = `// Keep inline comments.\n{"instructions":["{file:${project}/rules.md}"],"permission":{"bash":"deny"}}`
     const environment = await resolveOpenCodeEnvironment(configuration, {}, { OPENCODE_CONFIG_CONTENT: inline })
     expect(environment.OPENCODE_CONFIG_CONTENT).toBe(inline)
     const remapped = remapOpenCodeConfig(environment.OPENCODE_CONFIG_CONTENT!, configuration.setup)
@@ -255,6 +255,45 @@ describe("OpenCode configuration and credentials", () => {
     expect(remapped).toContain('"file:///home/viber/.config/opencode/plugin.ts"')
     expect(remapped).toContain('"permission": {"bash":"deny"}')
     expect(remapped).toContain('"unchanged": "/host/project-other/guide.md"')
+  })
+
+  test("remaps native file substitutions and encoded plugin URLs without changing external references", () => {
+    const setup = {
+      hostHome: "/host/home",
+      mappings: [{ host: "/host/project", container: "/home/viber/app" }, { host: "/host/home/.config/opencode", container: "/home/viber/.config/opencode" }]
+    }
+    const raw = `{
+      // Preserve native substitutions and plugin URL suffixes.
+      "instructions": ["{file:/host/project/rules.md}", "{file:~/.config/opencode/global.md}", "{file:/outside/rules.md}"],
+      "plugin": ["file:///host/home/.config/opencode/my%20plugin.ts?rev=1#cache"]
+    }`
+    const remapped = remapOpenCodeConfig(raw, setup)
+    expect(remapped).toContain("// Preserve native substitutions and plugin URL suffixes.")
+    expect(parseOpenCodeConfig(remapped)).toEqual({
+      instructions: ["{file:/home/viber/app/rules.md}", "{file:/home/viber/.config/opencode/global.md}", "{file:/outside/rules.md}"],
+      plugin: ["file:///home/viber/.config/opencode/my%20plugin.ts?rev=1#cache"]
+    })
+  })
+
+  test("keeps absolute deny rules effective after mapping project paths, including agent and inline permissions", () => {
+    const setup = { hostHome: "/host/home", mappings: [{ host: "/host/project", container: "/home/viber/app" }] }
+    const raw = `{
+      "permission": {"edit": {
+        // Keep private project files denied.
+        "/host/project/secrets/**": "deny", "/outside/**": "deny"
+      }},
+      "agent": {"review": {"permission": {"read": {"/host/project/private/*": "deny"}}}},
+      "unrelated": {"/host/project/key": "unchanged"}
+    }`
+    const remapped = remapOpenCodeConfig(raw, setup)
+    expect(remapped).toContain("// Keep private project files denied.")
+    expect(parseOpenCodeConfig(remapped)).toEqual({
+      permission: { edit: { "/home/viber/app/secrets/**": "deny", "/outside/**": "deny" } },
+      agent: { review: { permission: { read: { "/home/viber/app/private/*": "deny" } } } },
+      unrelated: { "/host/project/key": "unchanged" }
+    })
+    expect(parseOpenCodeConfig(remapOpenCodeConfig('{"edit":{"/host/project/secrets/**":"deny"}}', setup, true)))
+      .toEqual({ edit: { "/home/viber/app/secrets/**": "deny" } })
   })
 
   test("copies writable config, auth, MCP auth and session state while leaving the host unchanged", async () => {
