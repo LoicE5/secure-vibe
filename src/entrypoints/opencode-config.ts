@@ -1,0 +1,189 @@
+import { chmod, copyFile, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "fs/promises"
+import { isAbsolute, join, relative, resolve, sep } from "path"
+import { fileURLToPath, pathToFileURL } from "url"
+import { Database } from "bun:sqlite"
+import { applyEdits, parse, visit, type Edit, type JSONPath, type ParseError } from "jsonc-parser"
+
+export interface OpenCodePathMapping {
+  host: string
+  container: string
+}
+
+export interface OpenCodeCopy extends OpenCodePathMapping {
+  source: string
+  directory: boolean
+}
+
+export interface OpenCodeSetup {
+  copies: OpenCodeCopy[]
+  mappings: OpenCodePathMapping[]
+  configFiles: string[]
+  hostHome: string
+  agentsPath: string
+}
+
+const SKIPPED_ENTRIES = new Set(["log", "logs", "cache", ".cache", "locks", "node_modules", "bin", ".git"])
+const SESSION_DATABASE_PATTERN = /(?:^|\/)opencode(?:-[\w.-]+)?\.db$/
+export const OPENCODE_CONFIG_NAMES = ["config.json", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"]
+export const OPENCODE_INLINE_VARIABLES = ["OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION"]
+
+/** Checks path containment without matching sibling prefixes. */
+export function isWithinDirectory(path: string, directory: string): boolean {
+  const suffix = relative(directory, path)
+  return suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix)
+}
+
+/** Translates only paths covered by provider copies or the selected project. */
+export function translateOpenCodePath(value: string, mappings: OpenCodePathMapping[], hostHome: string): string {
+  if(value.includes("{file:")) {
+    return value.replace(/\{file:([^}]+)\}/g, (reference: string, path: string) => `{file:${translateOpenCodePath(path, mappings, hostHome)}}`)
+  }
+  let fileUrl: URL | undefined
+  let path = value.replace(/^~(?=\/)/, hostHome)
+  if(value.startsWith("file://")) {
+    try {
+      fileUrl = new URL(value)
+      path = fileURLToPath(fileUrl)
+    } catch(urlError: unknown) {
+      console.warn("  Could not translate an invalid OpenCode file URL.")
+      return value
+    }
+  }
+  if(!isAbsolute(path)) return value
+  const mapping = [...mappings].sort((left: OpenCodePathMapping, right: OpenCodePathMapping) => right.host.length - left.host.length)
+    .find(candidate => isWithinDirectory(path, candidate.host))
+  if(!mapping) return value
+  const translated = join(mapping.container, relative(mapping.host, path))
+  if(!fileUrl) return translated
+  const translatedUrl = pathToFileURL(translated)
+  translatedUrl.search = fileUrl.search
+  translatedUrl.hash = fileUrl.hash
+  return translatedUrl.href
+}
+
+/** Parses JSONC without interpreting comments as environment references. */
+export function parseOpenCodeConfig(raw: string): unknown {
+  const errors: ParseError[] = []
+  const value: unknown = parse(raw, errors, { allowTrailingComma: true })
+  if(errors.length > 0) throw new Error("Invalid OpenCode JSON/JSONC configuration")
+  return value
+}
+
+/** Edits string values in JSONC while retaining comments and unrelated settings. */
+export function remapOpenCodeConfig(raw: string, setup: Pick<OpenCodeSetup, "mappings" | "hostHome">, permissionRules: boolean = false): string {
+  parseOpenCodeConfig(raw)
+  const edits: Edit[] = []
+  /** Queues a replacement for one translated JSON string token. */
+  function remapString(value: string, offset: number, length: number): void {
+    const translated = translateOpenCodePath(value, setup.mappings, setup.hostHome)
+    if(translated !== value) edits.push({ offset, length, content: JSON.stringify(translated) })
+  }
+  visit(raw, {
+    onLiteralValue: (value: unknown, offset: number, length: number) => {
+      if(typeof value === "string") remapString(value, offset, length)
+    },
+    onObjectProperty: (name: string, offset: number, length: number, line: number, column: number, path: () => JSONPath) => {
+      if(permissionRules || path().includes("permission")) remapString(name, offset, length)
+    }
+  }, { allowTrailingComma: true })
+  return applyEdits(raw, edits)
+}
+
+/** Snapshots committed SQLite state without copying its live WAL and shared-memory files. */
+async function snapshotOpenCodeDatabase(source: string, target: string): Promise<void> {
+  const sessionDatabase = SESSION_DATABASE_PATTERN.test(target)
+  const backupPath = `${target}.secure-vibe-backup`
+  let database: Database | undefined
+  let snapshot: Uint8Array | undefined
+  let incompatible = false
+  try {
+    database = new Database(source, { readonly: true })
+    database.exec("PRAGMA busy_timeout = 5000; BEGIN")
+    const tables = database.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()
+    incompatible = sessionDatabase && tables.length > 0 && !tables.some(table => table.name === "session")
+    snapshot = database.serialize()
+  } catch(databaseError: unknown) {
+    if(!sessionDatabase) throw databaseError
+    await copyFile(source, backupPath)
+    await chmod(backupPath, 0o600)
+    for(const suffix of ["-wal", "-shm", "-journal"]) {
+      const sidecar = `${source}${suffix}`
+      if(await stat(sidecar).catch(() => null)) {
+        await copyFile(sidecar, `${backupPath}${suffix}`)
+        await chmod(`${backupPath}${suffix}`, 0o600)
+      }
+    }
+    incompatible = true
+    console.warn(`  [entrypoint] Could not snapshot ${target}; preserving its files at ${backupPath}:`, databaseError)
+  } finally {
+    database?.close()
+  }
+  if(snapshot) {
+    const snapshotPath = incompatible ? backupPath : target
+    await writeFile(snapshotPath, snapshot, { mode: 0o600 })
+    await chmod(snapshotPath, 0o600)
+  }
+  if(incompatible) {
+    for(const suffix of ["", "-wal", "-shm", "-journal"]) await rm(`${target}${suffix}`, { force: true })
+    console.warn(`  [entrypoint] OpenCode session database is incompatible or unreadable. Starting a fresh container database; the copied history is preserved at ${backupPath}. Host files are unchanged.`)
+  }
+}
+
+/** Copies selected files, dereferencing only symlinks contained in the mounted source. */
+async function copyOpenCodeFiles(source: string, target: string, root: string, ancestors: Set<string>): Promise<void> {
+  const canonical = await realpath(source).catch(() => null)
+  if(!canonical || !isWithinDirectory(canonical, root) || ancestors.has(canonical)) return
+  const metadata = await stat(source)
+  if(metadata.isDirectory()) {
+    await mkdir(target, { recursive: true, mode: 0o700 })
+    await chmod(target, 0o700)
+    const nextAncestors = new Set([...ancestors, canonical])
+    for(const name of await readdir(source)) {
+      if(!SKIPPED_ENTRIES.has(name) && !/\.(?:db|sqlite3?)-(?:wal|shm|journal)$/.test(name)) {
+        await copyOpenCodeFiles(join(source, name), join(target, name), root, nextAncestors)
+      }
+    }
+  } else if(metadata.isFile()) {
+    await mkdir(resolve(target, ".."), { recursive: true, mode: 0o700 })
+    if(/\.(?:db|sqlite3?)$/.test(target) && (SESSION_DATABASE_PATTERN.test(target) || await Bun.file(source).slice(0, 16).text() === "SQLite format 3\0")) {
+      await snapshotOpenCodeDatabase(source, target)
+      return
+    }
+    await copyFile(source, target)
+    await chmod(target, /(?:^|\/)(?:auth|mcp-auth)\.json$/.test(target) ? 0o600 : (metadata.mode & 0o111) | 0o600)
+  }
+}
+
+/** Replaces the marked sandbox block while preserving global user instructions. */
+export function injectOpenCodeSandbox(existing: string, prompt: string): string {
+  const start = "<!-- secure-vibe sandbox (start) -->"
+  const end = "<!-- secure-vibe sandbox (end) -->"
+  const base = existing.replace(/<!-- secure-vibe sandbox \(start\) -->[\s\S]*?<!-- secure-vibe sandbox \(end\) -->/g, "").trimEnd()
+  return `${base ? `${base}\n\n` : ""}${start}\n${prompt.trim()}\n${end}\n`
+}
+
+/** Prepares writable provider state and remaps only disposable configuration copies. */
+export async function prepareOpenCodeFiles(setup: OpenCodeSetup, prompt: string): Promise<void> {
+  for(const copy of setup.copies) {
+    await copyOpenCodeFiles(copy.source, copy.container, await realpath(copy.source), new Set())
+  }
+  const configFiles = new Set(setup.configFiles)
+  for(const copy of setup.copies.filter(copy => copy.directory)) {
+    for(const name of OPENCODE_CONFIG_NAMES) configFiles.add(join(copy.container, name))
+  }
+  for(const path of configFiles) {
+    const raw = await readFile(path, "utf-8").catch(() => null)
+    if(raw === null) continue
+    try {
+      const remapped = remapOpenCodeConfig(raw, setup)
+      if(remapped !== raw) await writeFile(path, remapped, { mode: 0o600 })
+    } catch(configError: unknown) {
+      console.warn(`  [entrypoint] Could not remap OpenCode config ${path}:`, configError)
+    }
+  }
+  if(prompt) {
+    await mkdir(resolve(setup.agentsPath, ".."), { recursive: true, mode: 0o700 })
+    const existing = await readFile(setup.agentsPath, "utf-8").catch(() => "")
+    await writeFile(setup.agentsPath, injectOpenCodeSandbox(existing, prompt))
+  }
+}
