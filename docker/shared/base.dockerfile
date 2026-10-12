@@ -9,11 +9,6 @@ RUN brew install gcc \
         /home/linuxbrew/.linuxbrew/Homebrew/Library/Taps/homebrew/homebrew-core \
         /home/linuxbrew/.linuxbrew/.homebrewdocker \
         /home/linuxbrew/.cache/Homebrew
-
-RUN mkdir -p /tmp/rootfs/opt/linuxbrew-seed \
-    && cp -a --parents /home/linuxbrew/.linuxbrew /tmp/rootfs \
-    && cp -al /tmp/rootfs/home/linuxbrew/. /tmp/rootfs/opt/linuxbrew-seed/
-
 FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -24,25 +19,30 @@ RUN apt-get update \
         curl \
         build-essential \
         ca-certificates \
-        unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN usermod -l viber -d /home/viber -m ubuntu \
-    && groupmod -n viber ubuntu
+    && groupmod -n viber ubuntu \
+    && install -d -o viber -g viber /home/linuxbrew
 
 RUN passwd -l root && usermod -s /usr/sbin/nologin root
 
-COPY --from=homebrew --chown=viber:viber /tmp/rootfs/ /
+COPY --from=homebrew --chown=viber:viber \
+    /home/linuxbrew/.linuxbrew/ /opt/linuxbrew-seed/.linuxbrew/
+COPY --from=oven/bun:slim --chown=viber:viber /usr/local/bin/bun /home/viber/.bun/bin/bun
 
 USER viber
 WORKDIR /home/viber/app
 
+ENV HOMEBREW_NO_AUTO_UPDATE=1
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
 
-# bun is PID 1, so it must live in an image layer and never under /home/linuxbrew,
-# which the resettable secure-vibe-brew volume shadows at runtime.
-RUN curl -fsSL https://bun.sh/install | bash
+# Bun must remain outside the resettable Homebrew volume.
+ENV BUN_INSTALL="/home/viber/.bun"
 ENV PATH="/home/viber/.bun/bin:${PATH}"
+RUN ln -s bun /home/viber/.bun/bin/bunx \
+    && bun --version \
+    && bunx --version
 
 COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-sandbox.md
 COPY --chown=viber:viber src/assets/sandbox-prompt-nodind.md /tmp/sandbox-prompt-nodind.md

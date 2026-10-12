@@ -2,8 +2,7 @@ FROM ghcr.io/loice5/secure-vibe/base:latest
 
 RUN curl --compressed -fsSL https://antigravity.google/cli/install.sh | bash
 
-COPY --chown=viber:viber src/assets/antigravity-wrapper.sh /home/viber/bin/agy
-RUN chmod +x /home/viber/bin/agy
+COPY --chown=viber:viber --chmod=+x src/assets/antigravity-wrapper.sh /home/viber/bin/agy
 
 RUN ln -s /home/viber/.local/bin/agy /home/viber/bin/agy-default
 

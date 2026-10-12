@@ -4,8 +4,7 @@ RUN curl -LsSf https://mistral.ai/vibe/install.sh | bash
 
 RUN vibe --version
 
-COPY --chown=viber:viber src/assets/vibe-wrapper.sh /home/viber/bin/vibe
-RUN chmod +x /home/viber/bin/vibe
+COPY --chown=viber:viber --chmod=+x src/assets/vibe-wrapper.sh /home/viber/bin/vibe
 
 RUN ln -s /home/viber/.local/bin/vibe /home/viber/bin/vibe-default
 
