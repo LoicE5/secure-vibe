@@ -1,5 +1,6 @@
-import { chmod, copyFile, mkdir, readFile, readdir, realpath, stat, writeFile } from "fs/promises"
+import { chmod, copyFile, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "fs/promises"
 import { isAbsolute, join, relative, resolve, sep } from "path"
+import { Database } from "bun:sqlite"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 
 export interface OpenCodePathMapping {
@@ -20,7 +21,8 @@ export interface OpenCodeSetup {
   agentsPath: string
 }
 
-const SKIPPED_ENTRIES = new Set(["log", "logs", "cache", ".cache", "node_modules", "bin", ".git"])
+const SKIPPED_ENTRIES = new Set(["log", "logs", "cache", ".cache", "locks", "node_modules", "bin", ".git"])
+const SESSION_DATABASE_PATTERN = /(?:^|\/)opencode(?:-[\w.-]+)?\.db$/
 export const OPENCODE_CONFIG_NAMES = ["config.json", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"]
 
 /** Checks path containment without matching sibling prefixes. */
@@ -66,6 +68,46 @@ export function remapOpenCodeConfig(raw: string, setup: Pick<OpenCodeSetup, "map
   return result
 }
 
+/** Snapshots committed SQLite state without copying its live WAL and shared-memory files. */
+async function snapshotOpenCodeDatabase(source: string, target: string): Promise<void> {
+  const sessionDatabase = SESSION_DATABASE_PATTERN.test(target)
+  const backupPath = `${target}.secure-vibe-backup`
+  let database: Database | undefined
+  let snapshot: Uint8Array | undefined
+  let incompatible = false
+  try {
+    database = new Database(source, { readonly: true })
+    database.exec("PRAGMA busy_timeout = 5000; BEGIN")
+    const tables = database.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()
+    incompatible = sessionDatabase && tables.length > 0 && !tables.some(table => table.name === "session")
+    snapshot = database.serialize()
+  } catch(databaseError: unknown) {
+    if(!sessionDatabase) throw databaseError
+    await copyFile(source, backupPath)
+    await chmod(backupPath, 0o600)
+    for(const suffix of ["-wal", "-shm", "-journal"]) {
+      const sidecar = `${source}${suffix}`
+      if(await stat(sidecar).catch(() => null)) {
+        await copyFile(sidecar, `${backupPath}${suffix}`)
+        await chmod(`${backupPath}${suffix}`, 0o600)
+      }
+    }
+    incompatible = true
+    console.warn(`  [entrypoint] Could not snapshot ${target}; preserving its files at ${backupPath}:`, databaseError)
+  } finally {
+    database?.close()
+  }
+  if(snapshot) {
+    const snapshotPath = incompatible ? backupPath : target
+    await writeFile(snapshotPath, snapshot, { mode: 0o600 })
+    await chmod(snapshotPath, 0o600)
+  }
+  if(incompatible) {
+    for(const suffix of ["", "-wal", "-shm", "-journal"]) await rm(`${target}${suffix}`, { force: true })
+    console.warn(`  [entrypoint] OpenCode session database is incompatible or unreadable. Starting a fresh container database; the copied history is preserved at ${backupPath}. Host files are unchanged.`)
+  }
+}
+
 /** Copies selected files, dereferencing only symlinks contained in the mounted source. */
 async function copyOpenCodeFiles(source: string, target: string, root: string, ancestors: Set<string>): Promise<void> {
   const canonical = await realpath(source).catch(() => null)
@@ -76,10 +118,16 @@ async function copyOpenCodeFiles(source: string, target: string, root: string, a
     await chmod(target, 0o700)
     const nextAncestors = new Set([...ancestors, canonical])
     for(const name of await readdir(source)) {
-      if(!SKIPPED_ENTRIES.has(name)) await copyOpenCodeFiles(join(source, name), join(target, name), root, nextAncestors)
+      if(!SKIPPED_ENTRIES.has(name) && !/\.(?:db|sqlite3?)-(?:wal|shm|journal)$/.test(name)) {
+        await copyOpenCodeFiles(join(source, name), join(target, name), root, nextAncestors)
+      }
     }
   } else if(metadata.isFile()) {
     await mkdir(resolve(target, ".."), { recursive: true, mode: 0o700 })
+    if(/\.(?:db|sqlite3?)$/.test(target) && (SESSION_DATABASE_PATTERN.test(target) || await Bun.file(source).slice(0, 16).text() === "SQLite format 3\0")) {
+      await snapshotOpenCodeDatabase(source, target)
+      return
+    }
     await copyFile(source, target)
     await chmod(target, /(?:^|\/)(?:auth|mcp-auth)\.json$/.test(target) ? 0o600 : (metadata.mode & 0o111) | 0o600)
   }

@@ -6,6 +6,7 @@ import { resolveOpenCodeConfiguration, resolveOpenCodeDirectories } from "./conf
 import { referencedOpenCodeVariables, resolveOpenCodeEnvironment } from "./credentials"
 import { injectOpenCodeSandbox, prepareOpenCodeFiles, remapOpenCodeConfig, type OpenCodeSetup } from "../../entrypoints/opencode-config"
 import { loadDotEnv } from "../../utils/env-file"
+import { Database } from "bun:sqlite"
 
 const temporaryDirectories: string[] = []
 
@@ -27,6 +28,83 @@ afterEach(async () => {
 })
 
 describe("OpenCode configuration and credentials", () => {
+  test("snapshots committed WAL records while keeping the source database and credentials unchanged", async () => {
+    const root = await temporaryDirectory()
+    const host = join(root, "host")
+    const target = join(root, "container")
+    await mkdir(host)
+    const sourcePath = join(host, "opencode.db")
+    const writer = new Database(sourcePath)
+    try {
+      writer.exec("CREATE TABLE migration(id TEXT); PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; PRAGMA wal_checkpoint(TRUNCATE)")
+      writer.exec("CREATE TABLE session(id TEXT); INSERT INTO session VALUES ('synthetic-session')")
+      const originalDatabase = await readFile(sourcePath)
+      const originalWal = await readFile(`${sourcePath}-wal`)
+      await fixture(join(host, "auth.json"), '{"openai":{"key":"synthetic"}}')
+      await fixture(join(host, "locks/active.lock/heartbeat"), "")
+      await prepareOpenCodeFiles({
+        copies: [{ host, container: target, source: host, directory: true }],
+        mappings: [], configFiles: [], hostHome: root, agentsPath: join(target, "AGENTS.md")
+      }, "")
+      for(const name of ["opencode.db-wal", "opencode.db-shm", "locks"]) expect(await stat(join(target, name)).catch(() => null)).toBeNull()
+      const snapshot = new Database(join(target, "opencode.db"), { readonly: true })
+      try {
+        expect(snapshot.query("SELECT id FROM session").all()).toEqual([{ id: "synthetic-session" }])
+      } finally {
+        snapshot.close()
+      }
+      expect(await readFile(sourcePath)).toEqual(originalDatabase)
+      expect(await readFile(`${sourcePath}-wal`)).toEqual(originalWal)
+      expect(await readFile(join(target, "auth.json"), "utf-8")).toContain("synthetic")
+    } finally {
+      writer.close()
+    }
+  })
+
+  test("preserves an incompatible session database as a private backup and lets OpenCode create a fresh database", async () => {
+    const root = await temporaryDirectory()
+    const host = join(root, "host")
+    const target = join(root, "container")
+    await mkdir(host)
+    const sourcePath = join(host, "opencode.db")
+    const database = new Database(sourcePath)
+    database.exec("CREATE TABLE unrelated_state(id TEXT); INSERT INTO unrelated_state VALUES ('synthetic-history')")
+    database.close()
+    const original = await readFile(sourcePath)
+    await prepareOpenCodeFiles({
+      copies: [{ host, container: target, source: host, directory: true }],
+      mappings: [], configFiles: [], hostHome: root, agentsPath: join(target, "AGENTS.md")
+    }, "")
+    expect(await stat(join(target, "opencode.db")).catch(() => null)).toBeNull()
+    const backupPath = join(target, "opencode.db.secure-vibe-backup")
+    const backup = new Database(backupPath, { readonly: true })
+    try {
+      expect(backup.query("SELECT id FROM unrelated_state").all()).toEqual([{ id: "synthetic-history" }])
+    } finally {
+      backup.close()
+    }
+    expect((await stat(backupPath)).mode & 0o777).toBe(0o600)
+    expect(await readFile(sourcePath)).toEqual(original)
+  })
+
+  test("preserves unreadable session database files and sidecars without blocking startup", async () => {
+    const root = await temporaryDirectory()
+    const host = join(root, "host")
+    const target = join(root, "container")
+    await fixture(join(host, "opencode.db"), "synthetic invalid database")
+    await fixture(join(host, "opencode.db-wal"), "synthetic journal")
+    await prepareOpenCodeFiles({
+      copies: [{ host, container: target, source: host, directory: true }],
+      mappings: [], configFiles: [], hostHome: root, agentsPath: join(target, "AGENTS.md")
+    }, "")
+    expect(await stat(join(target, "opencode.db")).catch(() => null)).toBeNull()
+    for(const suffix of ["", "-wal"]) {
+      const backupPath = join(target, `opencode.db.secure-vibe-backup${suffix}`)
+      expect(await readFile(backupPath)).toEqual(await readFile(join(host, `opencode.db${suffix}`)))
+      expect((await stat(backupPath)).mode & 0o777).toBe(0o600)
+    }
+  })
+
   test("runner shares project, brew, Git identity and command handling while mounting provider files read-only", async () => {
     const home = await temporaryDirectory()
     const project = join(home, "project")
