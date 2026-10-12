@@ -114,6 +114,21 @@ describe("OpenCode configuration and credentials", () => {
     await expect(resolveOpenCodeConfiguration(join(home, "project"), { OPENCODE_CONFIG_DIR: alias }, home)).rejects.toThrow("Refusing to mount broad")
   })
 
+  test("inline configuration is remapped once at startup, even when host and container paths overlap", async () => {
+    const home = await temporaryDirectory()
+    const project = join(home, "project")
+    const configuration = await resolveOpenCodeConfiguration(project, {}, home)
+    configuration.setup.mappings.push({ host: "/home/viber/app", container: "/home/viber/.config/opencode-custom" })
+    const inline = `// Keep inline comments.\n{"instructions":["${project}/rules.md"],"permission":{"bash":"deny"}}`
+    const environment = await resolveOpenCodeEnvironment(configuration, {}, { OPENCODE_CONFIG_CONTENT: inline })
+    expect(environment.OPENCODE_CONFIG_CONTENT).toBe(inline)
+    const remapped = remapOpenCodeConfig(environment.OPENCODE_CONFIG_CONTENT!, configuration.setup)
+    expect(remapped).toContain("/home/viber/app/rules.md")
+    expect(remapped).not.toContain("/home/viber/.config/opencode-custom/rules.md")
+    expect(remapped).toContain("// Keep inline comments.")
+    expect(remapped).toContain('"bash":"deny"')
+  })
+
   test("selects Models.dev variables and explicit references with dotenv precedence, excluding comments and owned variables", async () => {
     const home = await temporaryDirectory()
     const project = join(home, "project")

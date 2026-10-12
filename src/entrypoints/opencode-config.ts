@@ -1,5 +1,5 @@
 import { chmod, copyFile, mkdir, readFile, readdir, realpath, stat, writeFile } from "fs/promises"
-import { isAbsolute, join, relative, resolve } from "path"
+import { isAbsolute, join, relative, resolve, sep } from "path"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 
 export interface OpenCodePathMapping {
@@ -26,7 +26,7 @@ export const OPENCODE_CONFIG_NAMES = ["config.json", "opencode.json", "opencode.
 /** Checks path containment without matching sibling prefixes. */
 export function isWithinDirectory(path: string, directory: string): boolean {
   const suffix = relative(directory, path)
-  return suffix === "" || (!suffix.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && suffix !== ".." && !isAbsolute(suffix))
+  return suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix)
 }
 
 /** Translates only paths covered by provider copies or the selected project. */
