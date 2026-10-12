@@ -45,11 +45,13 @@ export const PROVIDER_FLAGS: Record<string, ProviderId> = {
   "--vibe": "vibe",
   "--lechat": "vibe",
   "--mistral": "vibe",
-  "--miaou": "vibe"
+  "--miaou": "vibe",
+  "--opencode": "opencode",
+  "--open": "opencode"
 }
 
 /** Provider flags surfaced by tab-completion — only those with a runner today. */
 export const COMPLETABLE_PROVIDER_FLAGS: readonly string[] = [
   "--claude", "--antigravity", "--agy", "--ccr", "--claude-code-router", "--codex", "--gpt",
-  "--vibe", "--lechat", "--mistral", "--miaou"
+  "--vibe", "--lechat", "--mistral", "--miaou", "--opencode", "--open"
 ]

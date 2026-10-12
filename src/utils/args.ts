@@ -2,7 +2,7 @@ import type { ParsedArgs, ProviderId } from "../types"
 import type { BooleanFlag, ValueFlag } from "../constants"
 import { FLAGS, PROVIDER_FLAGS } from "../constants"
 
-export const PROVIDER_IDS = ["claude", "antigravity", "ccr", "codex", "vibe"] as const satisfies readonly ProviderId[]
+export const PROVIDER_IDS = ["claude", "antigravity", "ccr", "codex", "vibe", "opencode"] as const satisfies readonly ProviderId[]
 
 type SecureVibeEnvKey = "DIRECTORY" | "RUNTIME" | "SAVE" | "COMMAND" | "EXCLUDE" | "BUILD" | "BUILD_NO_CACHE" | "PULL" | "LOCAL" | "DIND" | "PROVIDER"
 
@@ -26,8 +26,7 @@ function isProviderId(value: string): value is ProviderId {
 }
 
 /** Parses process.argv per the FLAGS spec: first positional is `directory`, the rest `command`. */
-export function parseArgs(): ParsedArgs {
-  const argv = process.argv.slice(2)
+export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   const positionals: string[] = []
   const values: Record<ValueFlag["key"], string | null> = { save: null, runtime: null, command: null, exclude: null }
   const booleans = { build: false, buildNoCache: false, pull: false, local: false, dind: false }

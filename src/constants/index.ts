@@ -39,3 +39,4 @@ export {
   VIBE_IMAGE_CHECK_PATH,
   VIBE_DOCKERFILE_PATH
 } from "./providers/vibe"
+export { OPENCODE_IMAGE_NAME, OPENCODE_IMAGE_CHECK_PATH, OPENCODE_DOCKERFILE_PATH } from "./providers/opencode"

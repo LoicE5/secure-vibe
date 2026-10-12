@@ -88,6 +88,9 @@ jobs:
           - provider: codex
             image: secure-vibe/codex
             dockerfile: docker/codex.dockerfile
+          - provider: opencode
+            image: secure-vibe/opencode
+            dockerfile: docker/opencode.dockerfile
           - provider: vibe
             image: secure-vibe/vibe
             dockerfile: docker/vibe.dockerfile
@@ -150,7 +153,7 @@ jobs:
 
     strategy:
       matrix:
-        provider: [claude, antigravity, ccr, codex, vibe]
+        provider: [claude, antigravity, ccr, codex, vibe, opencode]
 
     steps:
       - name: Checkout

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add OpenCode via `--opencode` / `--open` and `SECURE_VIBE_PROVIDER=opencode`, with provider completion, its own image/check cache, shared Homebrew storage, project backups/exclusions, and Docker-in-Docker support. Claude remains the default
+- Install the latest stable standalone OpenCode through its official installer without shell changes; disable runtime self-updates and add build, no-cache build, pull, Docker-in-Docker, and image-pruning commands plus AMD64/ARM64 publishing
+- Stage host XDG config/data/state, home `.opencode` customizations, and explicit config/TUI overrides read-only, then copy them into writable disposable locations. Preserve JSONC comments, global instructions, authentication, MCP authentication, and session state while excluding logs, caches, dependencies, and binaries; credentials use mode `0600`
+- Forward selected Models.dev provider variables, `{env:NAME}` references, custom provider env declarations, and native inline overrides, with available project `.env` values taking precedence. Keep container-owned home, PATH, and XDG values and allow startup without authentication
+- Inject the appropriate marked sandbox instructions into OpenCode's global `AGENTS.md`. Auto-start once in the initial interactive shell and leave Bash available afterward; interactive OpenCode and `opencode run` use native `--yolo`, preserving explicit denies, while utility commands pass through and `opencode-default` retains normal approvals
+
 ## 3.12.5
 
 - Copy Bun and pnpm directly from their official images, removing installer scripts, release downloads, and architecture mapping while preserving the existing binary and global-package paths

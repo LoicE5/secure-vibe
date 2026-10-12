@@ -40,6 +40,11 @@
     "docker:pull:vibe": "docker pull ghcr.io/loice5/secure-vibe/vibe:latest",
     "docker:build:vibe:dind": "bun run docker:build:vibe && docker build -f docker/shared/dind.dockerfile --build-arg BASE_IMAGE=ghcr.io/loice5/secure-vibe/vibe:latest -t ghcr.io/loice5/secure-vibe/vibe:latest-dind .",
     "docker:pull:vibe:dind": "docker pull ghcr.io/loice5/secure-vibe/vibe:latest-dind",
+    "docker:build:opencode": "bun run docker:build:base && docker build -f docker/opencode.dockerfile -t ghcr.io/loice5/secure-vibe/opencode:latest .",
+    "docker:build:opencode:no-cache": "bun run docker:build:base:no-cache && docker build --no-cache -f docker/opencode.dockerfile -t ghcr.io/loice5/secure-vibe/opencode:latest .",
+    "docker:pull:opencode": "docker pull ghcr.io/loice5/secure-vibe/opencode:latest",
+    "docker:build:opencode:dind": "bun run docker:build:opencode && docker build -f docker/shared/dind.dockerfile --build-arg BASE_IMAGE=ghcr.io/loice5/secure-vibe/opencode:latest -t ghcr.io/loice5/secure-vibe/opencode:latest-dind .",
+    "docker:pull:opencode:dind": "docker pull ghcr.io/loice5/secure-vibe/opencode:latest-dind",
     "setup:alias": "bun scripts/alias.ts",
     "setup:completion": "bun scripts/completion.ts",
     "prune:brew": "docker volume rm secure-vibe-brew",
@@ -48,9 +53,13 @@
     "prune:image:antigravity": "docker rmi ghcr.io/loice5/secure-vibe/antigravity:latest",
     "prune:image:ccr": "docker rmi ghcr.io/loice5/secure-vibe/ccr:latest",
     "prune:image:codex": "docker rmi ghcr.io/loice5/secure-vibe/codex:latest",
-    "prune:image:vibe": "docker rmi ghcr.io/loice5/secure-vibe/vibe:latest"
+    "prune:image:vibe": "docker rmi ghcr.io/loice5/secure-vibe/vibe:latest",
+    "prune:image:opencode": "docker rmi ghcr.io/loice5/secure-vibe/opencode:latest"
   },
   "devDependencies": {
     "@types/bun": "latest"
+  },
+  "dependencies": {
+    "jsonc-parser": "3.3.1"
   }
 }

@@ -11,13 +11,17 @@ import { CODEX_PROVIDER_SPEC } from "./codex/spec"
 import { runVibeContainer } from "./vibe/run-vibe-container"
 import { VIBE_PROVIDER_SPEC } from "./vibe/spec"
 
+import { runOpenCodeContainer } from "./opencode/run-opencode-container"
+import { OPENCODE_PROVIDER_SPEC } from "./opencode/spec"
+
 /** Registry mapping each ProviderId to its container runner. */
 export const PROVIDER_RUNNERS: Partial<Record<ProviderId, ProviderRunner>> = {
   claude: runClaudeContainer,
   antigravity: runAntigravityContainer,
   ccr: runCcrContainer,
   codex: runCodexContainer,
-  vibe: runVibeContainer
+  vibe: runVibeContainer,
+  opencode: runOpenCodeContainer
 }
 
 /** Registry mapping each ProviderId to its static spec (image, dockerfile, brew volume). */
@@ -26,7 +30,8 @@ export const PROVIDER_SPECS: Partial<Record<ProviderId, ProviderSpec>> = {
   antigravity: ANTIGRAVITY_PROVIDER_SPEC,
   ccr: CCR_PROVIDER_SPEC,
   codex: CODEX_PROVIDER_SPEC,
-  vibe: VIBE_PROVIDER_SPEC
+  vibe: VIBE_PROVIDER_SPEC,
+  opencode: OPENCODE_PROVIDER_SPEC
 }
 
 /** Returns the runner for `providerId`, or exits (code 1) if it isn't implemented. */

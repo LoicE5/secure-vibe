@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import type { ParsedArgs } from "../types"
-import { PROVIDER_IDS, resolveConfiguration, resolveProviderId } from "./args"
+import { parseArgs, PROVIDER_IDS, resolveConfiguration, resolveProviderId } from "./args"
+import { COMPLETABLE_PROVIDER_FLAGS } from "../constants"
+import { resolveProviderRunner, resolveProviderSpec } from "../providers"
+import { runOpenCodeContainer } from "../providers/opencode/run-opencode-container"
 
 const EMPTY_ARGS = {
   directory: null,
@@ -17,6 +20,23 @@ const EMPTY_ARGS = {
 } satisfies ParsedArgs
 
 describe("secure-vibe configuration", () => {
+  test("both OpenCode aliases override environment selection and appear in completion", () => {
+    for(const flag of ["--opencode", "--open"]) {
+      const args = parseArgs(["/project", flag])
+      expect(args.provider).toBe("opencode")
+      expect(resolveConfiguration(args, { SECURE_VIBE_PROVIDER: "codex" }).provider).toBe("opencode")
+      expect(COMPLETABLE_PROVIDER_FLAGS).toContain(flag)
+    }
+    expect(resolveProviderRunner("opencode")).toBe(runOpenCodeContainer)
+    const spec = resolveProviderSpec("opencode")
+    const dind = resolveProviderSpec("opencode", true)
+    expect(spec.imageName).toBe("ghcr.io/loice5/secure-vibe/opencode:latest")
+    expect(spec.brewVolumeName).toBe("secure-vibe-brew")
+    expect(dind.imageName).toBe("ghcr.io/loice5/secure-vibe/opencode:latest-dind")
+    expect(dind.parentImageName).toBe(spec.imageName)
+    expect(dind.imageCheckCachePath).not.toBe(spec.imageCheckCachePath)
+    expect(dind.dind).toBe(true)
+  })
   test("defaults to claude and accepts every provider", () => {
     expect(resolveProviderId(null, {})).toBe("claude")
     for(const provider of PROVIDER_IDS) {
