@@ -1,5 +1,5 @@
 {
-  "version": "3.13.1",
+  "version": "3.13.2",
   "scripts": {
     "start": "bun src/index.ts",
     "vibe": "bun run start",

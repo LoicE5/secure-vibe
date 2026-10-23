@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.13.2
+
+- Consolidate the shared base image's PATH into a single declaration while preserving executable lookup order
+
 ## 3.13.1
 
 - Fix CCR image builds failing with missing `dist/pnpm.mjs` by copying the complete pnpm installation from its official image

@@ -35,12 +35,13 @@ COPY --from=oven/bun:slim --chown=viber:viber /usr/local/bin/bun /home/viber/.bu
 USER viber
 WORKDIR /home/viber/app
 
-ENV HOMEBREW_NO_AUTO_UPDATE=1
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
-
 # Bun must remain outside the resettable Homebrew volume.
-ENV BUN_INSTALL="/home/viber/.bun"
-ENV PATH="/home/viber/.bun/bin:${PATH}"
+ENV HOMEBREW_NO_AUTO_UPDATE=1 \
+    BUN_INSTALL="/home/viber/.bun"
+
+# Wrappers must shadow the real binaries even when the entrypoint never sources .bashrc.
+ENV PATH="/home/viber/bin:/home/viber/.local/bin:${BUN_INSTALL}/bin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+
 RUN ln -s bun /home/viber/.bun/bin/bunx \
     && bun --version \
     && bunx --version
@@ -49,9 +50,6 @@ COPY --chown=viber:viber src/assets/sandbox-prompt.md /home/viber/.secure-vibe-s
 COPY --chown=viber:viber src/assets/sandbox-prompt-nodind.md /tmp/sandbox-prompt-nodind.md
 RUN cat /tmp/sandbox-prompt-nodind.md >> /home/viber/.secure-vibe-sandbox.md && rm /tmp/sandbox-prompt-nodind.md
 
-# /home/viber/bin sits first so the provider wrappers shadow the real binaries on PATH,
-# including on the explicit-command entrypoint path, which never sources .bashrc.
 RUN mkdir -p /home/viber/bin
-ENV PATH="/home/viber/bin:/home/viber/.local/bin:${PATH}"
 
 ENTRYPOINT ["bun", "/home/viber/entrypoint.ts"]
