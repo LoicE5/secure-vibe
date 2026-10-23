@@ -11,11 +11,9 @@ RUN apt-get update \
 USER viber
 
 ENV PNPM_HOME="/home/viber/.pnpm"
-ENV PATH="/home/viber/.pnpm:/home/viber/.pnpm/bin:${PATH}"
-COPY --from=ghcr.io/pnpm/pnpm:latest --chown=viber:viber /opt/pnpm/pnpm /home/viber/.pnpm/pnpm
+ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PNPM_HOME}:${PNPM_HOME}/bin:${PATH}"
 
-# Re-asserted after PNPM_HOME, whose bin holds a real `ccr` that would shadow the wrapper.
-ENV PATH="/home/viber/bin:/home/viber/.local/bin:/home/viber/.bun/bin:${PATH}"
+COPY --from=ghcr.io/pnpm/pnpm:latest --chown=viber:viber /opt/pnpm/ /home/viber/.pnpm/
 
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
