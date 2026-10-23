@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.13.1
+
+- Fix CCR image builds failing with missing `dist/pnpm.mjs` by copying the complete pnpm installation from its official image
+- Consolidate CCR's PATH setup while keeping provider wrappers ahead of pnpm's global executables
+
 ## 3.13.0
 
 - Fix OpenCode's blank, unresponsive startup when a copied session database is rejected with `Database is not empty and has no session table`. Snapshot SQLite databases with their committed WAL records, exclude runtime locks and live sidecars, and preserve incompatible session databases as private container backups before starting fresh; host history and credentials remain unchanged
