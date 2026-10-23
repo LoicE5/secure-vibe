@@ -9,6 +9,7 @@ RUN brew install gcc \
         /home/linuxbrew/.linuxbrew/Homebrew/Library/Taps/homebrew/homebrew-core \
         /home/linuxbrew/.linuxbrew/.homebrewdocker \
         /home/linuxbrew/.cache/Homebrew
+
 FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
