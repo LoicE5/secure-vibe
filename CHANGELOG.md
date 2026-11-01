@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.13.3
+
+- Import only Codex configuration, user customizations, skills, and portable plugin resources through a temporary read-only snapshot; keep host runtime state and history out of containers
+- Initialize an independent Linux Codex daemon in each container while preserving injected credentials, subagents, and container-local resume
+
 ## 3.13.2
 
 - Consolidate the shared base image's PATH into a single declaration while preserving executable lookup order
