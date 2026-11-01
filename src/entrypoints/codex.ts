@@ -1,6 +1,6 @@
 import { mkdir, writeFile, readFile, access } from "fs/promises"
 import { $ } from "bun"
-import { disableMacosNodeRepl } from "./codex-config"
+import { disableMacosNodeRepl, prepareCodexHome } from "./codex-config"
 
 const brewReady = await access("/home/linuxbrew/.linuxbrew").then(() => true).catch(() => false)
 if(!brewReady) {
@@ -19,26 +19,9 @@ if(!brewReady) {
 const HOME_DIR = "/home/viber"
 const CODEX_DIR = `${HOME_DIR}/.codex`
 
-/** Copies a read-only host mount into a writable copy; the host stays untouched. */
-async function mirror(hostDir: string, targetDir: string): Promise<void> {
-  const hostExists = await access(hostDir).then(() => true).catch(() => false)
-  if(!hostExists) return
-  await mkdir(targetDir, { recursive: true })
-  const cpProc = Bun.spawn(
-    ["bash", "-c", `shopt -s dotglob nullglob; cp -rp "${hostDir}/"* "${targetDir}/" 2>/dev/null; true`],
-    { stdout: "pipe", stderr: "pipe" }
-  )
-  await cpProc.exited
-}
-
-await mirror(`${HOME_DIR}/.codex-host`, CODEX_DIR)
-
-// Written raw: the host runner already validated it carries tokens or an API key.
 const credentials = process.env.CODEX_CREDENTIALS
-if(credentials) {
-  await mkdir(CODEX_DIR, { recursive: true })
-  await writeFile(`${CODEX_DIR}/auth.json`, credentials, { mode: 0o600 })
-} else {
+await prepareCodexHome(`${HOME_DIR}/.codex-import`, HOME_DIR, credentials)
+if(!credentials) {
   console.warn("  [entrypoint] CODEX_CREDENTIALS not set — codex will prompt for authentication.")
 }
 
@@ -81,6 +64,13 @@ if(sandboxPrompt) {
   const block = `${START_MARKER}\n${sandboxPrompt.trim()}\n${END_MARKER}`
   const merged = `${base.replace(/\s*$/, "")}\n\n${block}\n`.replace(/^\n+/, "")
   await writeFile(agentsMdPath, merged)
+}
+
+const daemon = await $`codex app-server daemon start`.quiet().nothrow()
+if(daemon.exitCode !== 0) {
+  console.error("  [entrypoint] Could not start the container's Codex daemon.")
+  console.error(daemon.stderr.toString().trim())
+  process.exit(daemon.exitCode)
 }
 
 const gitUserName = process.env.GIT_USER_NAME

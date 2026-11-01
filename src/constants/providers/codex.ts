@@ -1,7 +1,7 @@
 import { homedir } from "os"
 import { join } from "path"
 
-/** Host's ~/.codex — Codex CLI config/state. Mounted read-only, mirrored in. */
+/** Host's ~/.codex — Codex CLI configuration and credential source. */
 export const CODEX_DIR = join(homedir(), ".codex")
 
 /** Codex's auth file — plaintext JSON on every platform (no keychain). Read pre-spawn, injected via env. */

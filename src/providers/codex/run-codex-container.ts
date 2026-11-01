@@ -1,7 +1,7 @@
 import type { Runtime, GitIdentity, ProviderSpec } from "../../types"
-import { CODEX_DIR } from "../../constants"
 import { spawnContainer } from "../../utils/container"
 import { resolveCodexCredentials } from "./credentials"
+import { withCodexImports } from "./imports"
 
 /** Options the orchestrator passes to runCodexContainer. */
 export interface RunCodexContainerOptions {
@@ -12,7 +12,7 @@ export interface RunCodexContainerOptions {
   gitConfig: GitIdentity | null
 }
 
-/** Runs the Codex container with the host's auth and ~/.codex mounted read-only. */
+/** Runs Codex with injected credentials and disposable configuration imports. */
 export async function runCodexContainer(options: RunCodexContainerOptions): Promise<number> {
   const credentialsJson = await resolveCodexCredentials()
 
@@ -22,13 +22,13 @@ export async function runCodexContainer(options: RunCodexContainerOptions): Prom
     extraEnv.CODEX_CREDENTIALS = credentialsJson
   }
 
-  return spawnContainer({
+  return withCodexImports(directory => spawnContainer({
     runtime: options.runtime,
     spec: options.spec,
     workDir: options.workDir,
     gitConfig: options.gitConfig,
     command: options.command,
     extraEnv,
-    extraMounts: [[CODEX_DIR, "/home/viber/.codex-host", "ro"]]
-  })
+    extraMounts: [[directory, "/home/viber/.codex-import", "ro"]]
+  }))
 }

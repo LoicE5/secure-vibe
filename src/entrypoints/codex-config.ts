@@ -1,3 +1,19 @@
+import { access, cp, mkdir, writeFile } from "fs/promises"
+import { join } from "path"
+
+export async function prepareCodexHome(source: string, home: string, credentials?: string): Promise<void> {
+  for(const name of [".codex", ".agents"]) {
+    const directory = join(source, name)
+    if(await access(directory).then(() => true).catch(() => false)) {
+      await cp(directory, join(home, name), { recursive: true, verbatimSymlinks: true })
+    }
+  }
+  if(credentials) {
+    await mkdir(join(home, ".codex"), { recursive: true })
+    await writeFile(join(home, ".codex/auth.json"), credentials, { mode: 0o600 })
+  }
+}
+
 const NODE_REPL_HEADER = /^\[mcp_servers\.(?:node_repl|"node_repl")\]\s*$/m
 const MACOS_CHATGPT_COMMAND = /^command\s*=\s*["']\/Applications\/ChatGPT\.app\//m
 
